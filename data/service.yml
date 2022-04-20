@@ -1,0 +1,24 @@
+enable  : false
+title   : I provide Corporate Influencer Coaching and Data-Driven Social Marketing Consulting
+subtitle: Applied Decision Science to beat (covert) narrative competition opposing sustainablity. 
+image   : images/topics.jpeg
+serviceItem :
+  - icon  : ion-ribbon-b
+    title : Brand Storytelling
+    description: >
+      Know what you stand for and how to engage in consistent and integer brand storytelling. Boost your community entanglement with a computational narratologically backed creative dialectics in content marketing. 
+
+  - icon  : ion-arrow-graph-up-right
+    title : Content Intelligence
+    description: >
+      Content strategy: What topics should you pick up to nudge the discourse in your domain to sustainable forms. 
+
+  - icon  : ion-erlenmeyer-flask
+    title : AI content creation for Engagement Marketing 
+    description: >
+      Machine learning for authentic and empathetic content marketing. My AI ONLY augments creative and analytical aspects of YOUR empathy (i.e. via semantic folding technology), to smoothen YOUR interactions. 
+
+  - icon  : ion-speakerphone
+    title : Influence Marketing
+    description: >
+      Reverse engineer relational and cognitive influence paths that inspire the dominant narratives of your community. Smoothen your influencer engagements: Influencer whispering through depth psychological personality prediction. 

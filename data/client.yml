@@ -1,0 +1,9 @@
+enable  : true
+title   : Data Science for Strategic Communications 
+subtitle: Social Selling Grade Stakeholder Empathy through Cutting Edge Content Intelligence for your Niche. 
+clientsLogo:
+  - image : images/portfolio/rstudio.png
+  - image : images/portfolio/mljar.png
+  - image : images/portfolio/huggingface.jpeg
+  - image : images/portfolio/spacyr.png
+  - image : images/portfolio/knime2.png

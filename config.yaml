@@ -1,0 +1,71 @@
+baseURL: http://example.org/
+languageCode: en-us
+title: Timer | Responsive Multipurpose Bootstrap Hugo Template
+theme: timer-hugo
+menu:
+  main:
+    - name: Home
+      url: /
+      weight: 1
+    - name: About
+      url: about
+      weight: 6
+    # - name: Service
+    #   url: service
+    #   weight: 3
+#    - name: Gallery
+#      url: gallery
+#      weight: 4
+    - name: Blog
+      url: blog
+      weight: 5
+#    - name: Contact
+#      url: contact
+#      weight: 6
+params:
+  about:
+    content: Hello, I’m a Data Scientist situated in Gronau, Germany.
+      I hold two master degrees in Marketing Psychology and Business Administration with several years of experience as data scientist working in market research and digital marketing. Work with me to hack your social matrix.  <br>
+      <br> Read more about my services and learn about content intelligence in my blog. 
+    enable: yes
+    image: images/about/rcode.png
+    title: ABOUT ME
+  author: Themefisher
+  banner:
+    bgImage: images/slider.jpg
+    btn: yes
+    btnText: Chat with me via Linkedin
+    btnURL: https://www.linkedin.com/in/knut-j%C3%A4gersberg/
+    description: DECISION SCIENCE TO TRUMP NARRATIVE COMPETITION.
+    enable: yes
+    flipText:
+      - title: Marketing Data Science
+      - title: Text Mining & Social Network Analysis  
+      - title: AI-Augmented Engagement Marketing
+    heading: HI, I'M Knut & I LOVE 
+  contactFormAction: '#'
+  cta:
+    btnText: Contact with me
+    btnURL: /contact
+    content: Lorem ipsum dolor sit amet, consectetur adipisicing elit. Nobis,<br>possimus
+      commodi, fugiat magnam temporibus vero magni recusandae? Dolore, maxime praesentium.
+    enable: no
+    title: SO WHAT YOU THINK ?
+  dateFormat: 6 January 2006
+  description: Airspace Hugo theme
+  googleAnalitycsID: Your ID
+  home: Home
+  logo: images/knut.png
+  portfolio:
+    enable: no
+    subtitle: Aliquam lobortis. Maecenas vestibulum mollis diam. Pellentesque auctor
+      neque nec urna. Nulla sit amet est. Aenean posuere tortor sed cursus feugiat,
+      nunc augue blandit nunc, eu sollicitudin urna dolor sagittis lacus.
+    title: Latest Works
+  socialIcon:
+    - icon: ion-social-twitter
+      url: 'https://twitter.com/JagersbergKnut'
+    - icon: ion-social-linkedin
+      url: 'https://www.linkedin.com/in/knut-j%C3%A4gersberg/'
+    - icon: ion-social-youtube
+      url: '#'

@@ -1,0 +1,34 @@
+enable  : false
+title   : Branding strategy, Content Intelligence based Content Strategy for
+subtitle: >
+  Influence Marketing and Corporate Influence 
+item    :
+  - icon  : ion-arrow-graph-up-right
+    title : Keyword research and SEO consultancy
+    description : >
+      Know trending topics in your domain and use artificial intelligence to rank higher
+
+  - icon  : ion-ribbon-b
+    title : Branding strategy
+    description : >
+      Know what you stand for and how to narrate your personal brand with your voice. 
+
+  - icon  : ion-erlenmeyer-flask
+    title : Predictive Engagement Marketing
+    description : >
+      Engaging content marketing through data science and natural language processing based insights in your target group. 
+
+  - icon  : ion-person-stalker
+    title : Stakeholder Mapping and Profiling
+    description : >
+       Target audience segmentation and persona development for empathetic core and tangential content creation. 
+
+  - icon  : ion-person
+    title : Content mapping
+    description : >
+      Know where and how to stage customer success. 
+  
+  - icon  : ion-speakerphone
+    title : Influence Marketing
+    description : >
+      Know how to engage the right influencers and nudge them to co-create content with influencers of your target audience. 
