@@ -1,6 +1,6 @@
 baseURL: http://example.org/
 languageCode: en-us
-title: Timer | Responsive Multipurpose Bootstrap Hugo Template
+title: Knut's Blog | Computational Narratology 
 theme: timer-hugo
 menu:
   main:
@@ -36,7 +36,7 @@ params:
     btn: yes
     btnText: Chat with me via Linkedin
     btnURL: https://www.linkedin.com/in/knut-j%C3%A4gersberg/
-    description: DECISION SCIENCE TO TRUMP NARRATIVE COMPETITION.
+    description: Decision science in narrative competition.
     enable: yes
     flipText:
       - title: Marketing Data Science
@@ -69,3 +69,4 @@ params:
       url: 'https://www.linkedin.com/in/knut-j%C3%A4gersberg/'
     - icon: ion-social-youtube
       url: '#'
+

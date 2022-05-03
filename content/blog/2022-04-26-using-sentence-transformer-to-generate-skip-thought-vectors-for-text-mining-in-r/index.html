@@ -1,0 +1,487 @@
+---
+title: 'Thought vectors for text classification in R '
+author: "Knut Jägersberg"
+date: '2022-04-26'
+slug: []
+categories: Data Science
+tags:
+- Natural Language Processing
+- Text Mining
+- Topic Modelling
+- Text Classification
+---
+
+<script src="{{< blogdown/postref >}}index_files/header-attrs/header-attrs.js"></script>
+
+
+<div id="what-are-thought-vectors" class="section level1">
+<h1>What are thought vectors?</h1>
+<p>The term thought vector is often used as synonym for (deep learning based) document embeddings.
+Originally, thought vectors were a generalization of skip-gram word2vec to capture meaning on the more abstract level of the “trains of thought” amongst text documents. Whilst the original skip-thought architecture uses a bi-directional recurrent neural network, the idea of thought vectors is simply to apply the same reasoning from word vectors on sentence representations: The distribution of the meaning of neighboring claims encodes the meaning of each claim.<br />
+We can use thought vectors to improve document embeddings, namely in case we have a lot of documents where content creators have had comparable trains of thought, potentially on different main topics and the exact sequencing in their perception of semantics does not matter. Thought vectors improve a topic modelling backend, if we can assume a certain uniformity of thinking in document creations.</p>
+<p><img src="thoughtvectors.png" /></p>
+</div>
+<div id="why-are-thought-vectors-useful-for-topic-modeling-and-text-classification" class="section level1">
+<h1>Why are thought vectors useful for topic modeling and text classification?</h1>
+<p>Deep learning is great for generating high quality sentence embeddings.</p>
+<p>Longer documents pose computational challenges on high quality transformer models.
+Scaling costs considerable more computational and financial resources.
+A modular, optionally shallow architecture enables high quality topic modelling under restrained resource usage.</p>
+<div id="how-to-implement-thought-vectors-with-doc2vec" class="section level2">
+<h2>How to implement thought vectors with doc2vec</h2>
+<p>In a shallow architecture, we can also take doc2vec instead of a recurrent neural network as basis to generate document embeddings from sentence embeddings. In all cases, the skip-thought algorithm tries to guess the surrounding sentences of a given sentence. Doc2vec relaxes the requirement on using exact ordering of the claims. We can use sentence embeddings with an artificial vocabulary to provide doc2vec with pretrained vectors.
+Sentence embeddings approximate the meaning of a sentence. So instead of a precise thought, it seems more sensible to try to decode the rough gist of a sentence. That is why I might opt to use sentence cluster medoids as base sentence vocabulary for doc2vec based thought vectors in a later iteration.
+In this thought vector implementation, we put doc2vec on sentence transformer stereoids.
+Note that this approach is modular, works on shallow, scalable sentence embeddings like u-SIF as well. The main benefit of thought vectors is improved topic recognition by better aggregation of fine grained semantic representations (sentence or paragraph embeddings) than by mean pooling.
+The dependency on doc2vec introduces limitations as a classifier, as we would have to infer doc2vec on new data. Thought vectors are primarily a tool for high quality topic modeling and bulk labeling! Fine tuned transformers usually work better for training general classifiers from data (i.e. labeled using thought vectors!).
+In this example, I still use classification to easily measure the quality of the topic modeling achieved with thought vectors.</p>
+<p>## Benchmarking thought vectors for topic modeling / classification</p>
+<p>Let’s suggest thought vectors are well suited to encode the meaning of logically structured, formal text. They can also suggest depth psychological meaning among free associations of content creators.
+Thought vectors can also yield better representations for topic modelling across long documents compared to other vectorization methods. For simplicity, we will use the Reuters 21578 dataset multi-label topic classification task, only include lengthy articles and quickly filter out some noise. We will both use the given topics and do our own topic modeling.</p>
+<pre class="r"><code>pacman::p_load(tidyverse, data.table, tidytable)
+
+#dataset source
+# https://github.com/clairbarnes/cs909
+
+reutersCSV &lt;- fread(&quot;~/Documents/reutersCSV.csv&quot;)
+reutersCSV &lt;- reutersCSV[c(1:17979, 17981:nrow(reutersCSV)),]%&gt;% 
+  mutate(length=nchar(doc.text)) %&gt;% 
+  filter.(length&gt;100) %&gt;% 
+  filter(str_detect(doc.title, &quot;QTR&quot;, negate = T))
+
+
+head(reutersCSV %&gt;% select(doc.title, doc.text, everything()))</code></pre>
+<pre><code>## # A tidytable: 6 × 141
+##   doc.title  doc.text    pid fileName purpose topic.acq topic.alum topic.austdlr
+##   &lt;chr&gt;      &lt;chr&gt;     &lt;int&gt;    &lt;int&gt; &lt;chr&gt;       &lt;int&gt;      &lt;int&gt;         &lt;int&gt;
+## 1 BAHIA COC… &quot;Showers…     1        0 train           0          0             0
+## 2 STANDARD … &quot;Standar…     2        0 train           0          0             0
+## 3 TEXAS COM… &quot;Texas C…     3        0 train           0          0             0
+## 4 TALKING P… &quot;BankAme…     4        0 train           0          0             0
+## 5 NATIONAL … &quot;The U.S…     5        0 train           0          0             0
+## 6 ARGENTINE… &quot;Argenti…     6        0 train           0          0             0
+## # … with 133 more variables: topic.austral &lt;int&gt;, topic.barley &lt;int&gt;,
+## #   topic.bfr &lt;int&gt;, topic.bop &lt;int&gt;, topic.can &lt;int&gt;, topic.carcass &lt;int&gt;,
+## #   topic.castor.meal &lt;int&gt;, topic.castor.oil &lt;int&gt;, topic.castorseed &lt;int&gt;,
+## #   topic.citruspulp &lt;int&gt;, topic.cocoa &lt;int&gt;, topic.coconut &lt;int&gt;,
+## #   topic.coconut.oil &lt;int&gt;, topic.coffee &lt;int&gt;, topic.copper &lt;int&gt;,
+## #   topic.copra.cake &lt;int&gt;, topic.corn &lt;int&gt;, topic.corn.oil &lt;int&gt;,
+## #   topic.cornglutenfeed &lt;int&gt;, topic.cotton &lt;int&gt;, topic.cotton.meal &lt;int&gt;, …</code></pre>
+</div>
+</div>
+<div id="what-topics-will-we-classify" class="section level1">
+<h1>What topics will we classify?</h1>
+<p>The corpus contains a lot of overlapping topics, its purpose here is to try out thought vectors and try out if they can classify ambiguous topics and now well they work to identify non-overlapping topics. I suggest thought vectors can capture reasoning patterns that allow us to classify discriminately among otherwise overlapping topics and ease spotting overall topics in such an environment. Let’s pick a few topics to classify. For that, we look what topics we have kept after some filtering:</p>
+<pre class="r"><code>topics &lt;- reutersCSV %&gt;% 
+  select(-pid, -fileName, -purpose, -doc.title, -length) %&gt;%
+  melt(id.vars=&quot;doc.text&quot;) %&gt;% 
+  filter.(value==1)
+
+ggcharts::bar_chart(topics, x = variable, top_n = 30)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<p>We will look at topics with more than 100 articles. Let’s also take a look at the length of those articles. Just a quick one liner update is not interesting as basis for thought vectors.</p>
+<pre class="r"><code>topics_n &lt;- reutersCSV %&gt;% 
+  select(-pid, -fileName, -purpose, -doc.title, -length) %&gt;% 
+  melt(id.vars=&quot;doc.text&quot;) %&gt;% filter.(value==1) %&gt;% 
+  summarise.(topic_n=sum(value), .by = variable) %&gt;% 
+  filter.(topic_n&gt;100)
+
+
+reuters_filtered &lt;- topics %&gt;% 
+  filter.(variable%in%topics_n$variable) %&gt;% 
+  mutate.(nchar=nchar(doc.text)) %&gt;% 
+  inner_join.(topics_n)
+
+
+plotluck::plotluck(reuters_filtered %&gt;% filter(nchar&lt;5000), variable~topic_n+nchar)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<p>I find the topics earnings and acquisitions are not interesting for this experiment, as they tend to have a lot of shorter articles. For simplification, we will not do multinomial classification and thus exclude all records that fall in multiple classes.</p>
+<pre class="r"><code>reuters_filtered &lt;- reuters_filtered %&gt;% 
+  filter(variable%in%c(&quot;topic.acq&quot;, &quot;topic.earn&quot;)==F) %&gt;% 
+  filter(gdata::duplicated2(doc.text)==F) %&gt;% 
+  select(topic=variable, -value, doc.text) %&gt;% 
+  mutate(doc.text=str_remove_all(doc.text, &quot; Reuter |REUTER &quot;))
+
+
+head(reuters_filtered %&gt;% select(doc.text))</code></pre>
+<pre><code>## # A tidytable: 6 × 1
+##   doc.text                                                                      
+##   &lt;chr&gt;                                                                         
+## 1 &quot;International Coffee Organization, ICO, producing countries will present a p…
+## 2 &quot;International Coffee Organization (ICO) exporters will modify their new prop…
+## 3 &quot;Talks on the possibility of reintroducing global coffee export quotas have b…
+## 4 &quot;The International Coffee Organization (ICO ) council talks on reintroducing …
+## 5 &quot;Indonesia&#39;s exports of tea and cocoa will continue to rise in calendar 1987 …
+## 6 &quot;Talks on coffee export quotas at the International Coffee Organization (ICO)…</code></pre>
+<div id="eda-how-many-sentences-are-there-per-document-and-how-long-are-they" class="section level2">
+<h2>EDA: How many sentences are there per document and how long are they?</h2>
+<pre class="r"><code>library(tidytext)
+
+sentences &lt;- unnest_paragraphs(reuters_filtered, output = &quot;sentence&quot;, input = &quot;doc.text&quot;, drop = F, to_lower = F, paragraph_break=&quot;.     &quot;) %&gt;% 
+  mutate(characters=nchar(sentence), 
+         n=1, 
+         words=stringi::stri_count_words(sentence)) 
+
+
+sentence_count &lt;- sentences %&gt;% 
+  summarise.(sentences=sum(n), .by=doc.text)
+
+
+
+sentences &lt;- sentences %&gt;% 
+  inner_join.(sentence_count)
+
+
+p0 &lt;- ggplot(sentence_count) +
+  aes(x = sentences) +
+  geom_histogram(bins = 30L, fill = &quot;#112446&quot;) +
+  theme_minimal()
+
+
+p1 &lt;- sentences %&gt;%
+ filter(characters &gt;= 0L &amp; characters &lt;= 820L) %&gt;%
+ ggplot() +
+  aes(x = characters) +
+  geom_histogram(bins = 30L, fill = &quot;#112446&quot;) +
+  theme_minimal()
+
+p2 &lt;- sentences %&gt;%
+ filter(words &gt;= 0L &amp; words &lt;= 145L) %&gt;%
+ ggplot() +
+  aes(x = words) +
+  geom_histogram(bins = 30L, fill = &quot;#112446&quot;) +
+  theme_minimal()
+
+library(cowplot)
+library(plotly)
+
+cowplot::plot_grid(p0, p1, p2, ncol = 1) </code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<p>Let’s remove very brief sequences.</p>
+<pre class="r"><code>sentences &lt;- sentences %&gt;% filter.(sentences&gt;2 | words&gt;3 | characters&gt;21)
+
+s &lt;- sentences$sentence
+
+nrow(sentences)</code></pre>
+<pre><code>## [1] 14793</code></pre>
+</div>
+<div id="eda-sentence-lengths-per-topic" class="section level2">
+<h2>EDA: Sentence lengths per topic</h2>
+<pre class="r"><code>ggplot(sentences) +
+  aes(x = topic, y = characters) +
+  geom_boxplot(shape = &quot;circle&quot;, fill = &quot;#112446&quot;) +
+  theme_minimal() %&gt;% 
+  cowplot::plot_grid(
+    
+  )</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-7-1.png" width="672" /></p>
+<p>Our sentence transformer model has a character limit of 512. We see that not a lot of information will be lost. Let’s encode them.</p>
+<pre class="r"><code>library(reticulate)
+use_python(&quot;/home/knut/transformers/bin/python&quot;, required = T)
+
+
+st &lt;- import(&quot;sentence_transformers&quot;)
+
+model &lt;- st$SentenceTransformer(&#39;all-distilroberta-v1&#39;)
+embeddings = model$encode(s)</code></pre>
+<p>Attach the embeddings on the sentences.</p>
+<pre class="r"><code>sentences &lt;- bind_cols.(sentences, embeddings %&gt;% as.data.table())</code></pre>
+</div>
+<div id="baseline-mean-vectors-per-document" class="section level2">
+<h2>Baseline: Mean vectors per document</h2>
+<p>An easy method is to just take the average of the sentence embeddings to derive document embeddings. Let’s take a quick global look at those with Pacmap dimensionality reduction, projecting the embeddings into 2-D (ignore the variable names, their odd naming comes from re-indexing).</p>
+<pre class="r"><code>pacmap &lt;- function(input_df, dims){
+    arrow::write_parquet(input_df, &quot;/home/knut/Desktop/input_df.parquet&quot;)
+    rm(input_df)
+    gc()
+  system(paste0(c(&quot;source /home/knut/pacmap/bin/activate &amp;&amp; python -c \&quot;from pacmap import pacmap; import pandas as pd; df=pd.read_parquet(&#39;/home/knut/Desktop/input_df.parquet&#39;); embedding = pacmap.PaCMAP(n_dims=&quot;), dims, c(&quot;, apply_pca=False, distance=&#39;angular&#39;); X_transformed = embedding.fit_transform(df.values); pd.DataFrame(X_transformed).to_csv(&#39;/home/knut/Desktop/output_df.csv&#39;)\&quot;&quot;)))
+  df &lt;- data.table::fread(&#39;/home/knut/Desktop/output_df.csv&#39;)
+  file.remove(&#39;/home/knut/Desktop/output_df.csv&#39;)
+  file.remove(&#39;/home/knut/Desktop/input_df.parquet&#39;)
+  df[2:nrow(df),2:ncol(df)]
+}
+
+
+mean_embs &lt;- sentences %&gt;% 
+  select(doc.text, V1:V768) %&gt;% 
+  group_by(doc.text) %&gt;% 
+  summarise_all(mean)
+
+embs &lt;- mean_embs %&gt;% select(-doc.text)
+
+df_pac &lt;- pacmap(embs, 2)
+
+
+df_pac$topic &lt;- as.factor(sentences %&gt;% distinct(topic, doc.text) %&gt;% pull(topic))
+
+ggplot(df_pac, aes(x = V2, y = V3,color=topic))+geom_point(show.legend = T)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-10-1.png" width="672" /></p>
+<p>Taking pacmap as indication, there might be considerable topic overlap. How well can we classify these topics with basic features, averaged embeddings and thought vectors?</p>
+</div>
+<div id="what-will-we-compare-thought-vectors-with-for-this-classification-task" class="section level2">
+<h2>What will we compare thought vectors with for this classification task?</h2>
+<ul>
+<li>pretrained fasttext embeddings based u-sif vectors</li>
+<li>averaged sentence transformer embeddings</li>
+<li>tf-idf</li>
+<li>doc2vec with and without pretrained embeddings</li>
+<li>staged unsupervised transformer fine tuning, cluster fine tuining, topic fine tuning</li>
+</ul>
+</div>
+<div id="split-train-testdata" class="section level2">
+<h2>Split train testdata</h2>
+<p>We can do a better data split than with random sampling using Twinning on word stems, as to preserve similarity between the texts.</p>
+<pre class="r"><code>library(doc2vec)
+library(twinning)
+
+
+x &lt;- sentences %&gt;% distinct(doc.text, topic) %&gt;% mutate(doc_id=row_number()) %&gt;% select(doc_id, text=doc.text, topic)
+
+source(&quot;/home/knut/Desktop/my_niche/clean.R&quot;)
+
+x$text   &lt;- clean(x$text, removeAdditional = &quot;[\r\n]&quot;)
+
+doc2vec &lt;- paragraph2vec(x, type = &quot;PV-DM&quot;, min_count = 1, threads = 15)
+
+
+
+#some cleaning
+
+
+embs &lt;- as.matrix(doc2vec, which = &quot;docs&quot;) %&gt;% as.data.table() 
+
+
+vocab     &lt;- summary(doc2vec,   which = &quot;docs&quot;)
+test &lt;- data.frame(vocab, check=as.numeric(vocab))
+excl &lt;- test[is.na(test$check),]
+rownames(embs) &lt;- vocab
+embs &lt;- embs[rownames(embs)%in%excl$vocab,]
+
+
+#test data
+reuters_filtered_sample &lt;- embs %&gt;% bind_cols(x %&gt;% select(topic))
+
+twin1_indices &lt;- twinning::twin(reuters_filtered_sample, r = 5)
+
+
+
+embs &lt;- mean_embs %&gt;% select(-doc.text)
+embs$topic &lt;- as.character(sentences %&gt;% distinct(topic, doc.text) %&gt;% pull(topic))
+
+testdataset = embs[twin1_indices, ]
+traindataset = embs[-twin1_indices, ] %&gt;% as.data.frame()
+
+
+#take care of class imbalance
+
+
+upsampled &lt;- caret::upSample(traindataset, as.factor(traindataset$topic), list = F) %&gt;% select(-Class)
+
+train &lt;- upsampled[!is.na(as.numeric(upsampled$V1)),]
+
+m &lt;- mapply(train%&gt;% select(-topic), FUN=as.numeric)
+
+ytrain &lt;- train%&gt;% select(topic)
+
+train &lt;- bind_cols(m %&gt;% as.data.frame(), ytrain)
+
+
+xtest &lt;- testdataset %&gt;% select(-topic)</code></pre>
+</div>
+<div id="simple-baseline-tf-idf-features-and-naive-bayes-classifier" class="section level2">
+<h2>Simple baseline: TF-IDF features and Naive Bayes Classifier</h2>
+<p>To get an impression about how well we can distinguish among the pre-labled topics and use the formerly multi-label classification data as multi-class data, we look at the performance of a simple baseline model. Here we see it is possible to classify with this set of topics very well.</p>
+<pre class="r"><code>baseline_docs = sentences %&gt;% 
+  select(doc.text,topic)
+
+dfmtest &lt;- baseline_docs[twin1_indices, ]
+dfmtrain = baseline_docs[-twin1_indices, ] 
+
+
+
+
+upsampled_dfm &lt;- caret::upSample(dfmtrain, as.factor(dfmtrain$topic), list = F) %&gt;% select(-Class)
+
+library(quanteda)
+training_dfm &lt;- dfm(upsampled_dfm$doc.text, remove = quanteda::stopwords(&quot;english&quot;), stem = TRUE) %&gt;% dfm_tfidf() %&gt;% dfm_trim(min_termfreq = 3000, termfreq_type = &quot;rank&quot;)
+
+test_dfm &lt;- dfm(dfmtest$doc.text) %&gt;% dfm_match(featnames(training_dfm)) 
+
+nb &lt;- quanteda.textmodels::textmodel_nb(x = training_dfm, upsampled_dfm$topic)
+
+predictions &lt;- predict(nb, test_dfm) %&gt;% as.data.frame()
+
+evaluation_metrics &lt;- crfsuite::crf_evaluation(dfmtest$topic, predictions$.)
+
+data.frame(mcc=mltools::mcc(dfmtest$topic, predictions$.), evaluation_metrics$overall %&gt;% t())</code></pre>
+<pre><code>##         mcc  accuracy precision    recall specificity        f1 precision_mean
+## 1 0.9310214 0.9579832 0.9580006 0.9579832   0.9700569 0.9774944      0.9557144
+##   recall_mean specificity_mean   f1_mean
+## 1   0.2496556        0.9940033 0.9766874</code></pre>
+<p>Now let’s try how well we can classify given the mean of sentence vectors across a document.</p>
+<pre class="r"><code>library(catboost)
+
+fit_params &lt;- list(iterations = 8000,
+                   loss_function = &#39;MultiClass&#39;,
+                   task_type = &#39;GPU&#39;, 
+                   logging_level=&#39;Silent&#39;)
+
+pool = catboost.load_pool(m %&gt;% as.data.frame(), label = ytrain$topic %&gt;% as.factor() %&gt;% as.integer())
+
+model &lt;- catboost.train(pool, params = fit_params)</code></pre>
+<pre><code>## Warning: less than 75% gpu memory available for training. Free: 5120.875 Total: 7979.3125</code></pre>
+<pre class="r"><code>xtest_pool &lt;- catboost.load_pool(xtest)
+
+prediction &lt;- catboost.predict(model, xtest_pool, prediction_type = &quot;Class&quot;)
+
+class_labels &lt;- data.table(number=ytrain$topic %&gt;% as.factor() %&gt;% as.integer()-1, label=ytrain$topic %&gt;% as.character()) %&gt;% distinct()
+
+
+prediction_labels &lt;- data.table(number=prediction) %&gt;% left_join.(class_labels)
+
+
+
+
+evaluation_metrics &lt;- crfsuite::crf_evaluation(testdataset$topic, prediction_labels$label)
+data.frame(mcc=mltools::mcc(testdataset$topic, prediction_labels$label), evaluation_metrics$overall %&gt;% t())</code></pre>
+<pre><code>##         mcc  accuracy precision    recall specificity        f1 precision_mean
+## 1 0.4493144 0.5063025 0.5765258 0.5063025   0.9466189 0.5167721      0.4384687
+##   recall_mean specificity_mean   f1_mean
+## 1   0.6226654        0.9678189 0.5012015</code></pre>
+<p>As indicated by these metrics and in our dimensionality reduction plot (pacmap), averaged sentence embeddings have a harder time distinguishing the classes. Can we improve these results with the context from thought vectors?
+Let’s compute them with doc2vec initialized on those sentence embeddings:</p>
+<pre class="r"><code>sentence_embedding_dictionary &lt;- sentences %&gt;% 
+  mutate(sentence_token=row_number() %&gt;% as.character()) %&gt;% 
+  select(doc.text, sentence, sentence_token, topic, V1:V768) 
+
+sentence_embedding_matrix &lt;- sentence_embedding_dictionary %&gt;% 
+  select(V1:V768) %&gt;% as.matrix()
+rownames(sentence_embedding_matrix) &lt;- sentence_embedding_dictionary$sentence_token
+
+
+document_sentences_tokenized &lt;- sentence_embedding_dictionary %&gt;% 
+     group_by(doc.text) %&gt;% 
+     summarise(text = str_c(sentence_token, collapse = &quot; &quot;)) %&gt;% 
+  mutate(doc_id=row_number()) %&gt;% 
+  select(doc_id, text)
+
+
+thought_vectors_model &lt;- paragraph2vec(document_sentences_tokenized, type = &#39;PV-DM&#39;, window = 1, min_count = 1, lr = 0.05, hs = T, iter = 100, dim = ncol(sentence_embedding_matrix), threads = 15, embeddings = sentence_embedding_matrix)
+
+
+thought_vectors &lt;- as.matrix(thought_vectors_model, which = &quot;docs&quot;)</code></pre>
+<p>Let’s take a look at a dimensionality reduced version of those:</p>
+<pre class="r"><code>tv_pac &lt;- pacmap(thought_vectors %&gt;% as.data.frame(), 2)
+
+
+tv_pac$topic &lt;- as.factor(sentences %&gt;% distinct(topic, doc.text) %&gt;% pull(topic))
+
+
+
+ggplot(tv_pac, aes(x = V2, y = V3,color=topic))+geom_point(show.legend = T)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-15-1.png" width="672" /></p>
+<p>This is a quite pretty. Well, let’s check the metrics and then let’s call it a day. Topic modelling in a subsequent post. I can see with my bare eyes it would work!</p>
+<pre class="r"><code>tv_topic &lt;- bind_cols(thought_vectors %&gt;% as.data.frame(), sentence_embedding_dictionary %&gt;% distinct(doc.text, topic) %&gt;% select(topic))
+
+class &lt;- distinct(tv_topic, topic) %&gt;% mutate(topic_number=row_number()-1)
+
+tv_topic &lt;- tv_topic %&gt;% inner_join(class)
+
+
+testdataset = tv_topic[twin1_indices, ]
+traindataset = tv_topic[-twin1_indices, ] %&gt;% as.data.frame()
+
+
+#take care of class imbalance
+
+
+upsampled &lt;- caret::upSample(traindataset %&gt;% select(-topic), traindataset$topic_number %&gt;% as.character() %&gt;% as.factor(), list = F) %&gt;% select(-Class)
+
+train &lt;- upsampled[!is.na(as.numeric(upsampled$V1)),]
+
+m &lt;- mapply(train%&gt;% select(-topic_number), FUN=as.numeric)
+
+ytrain &lt;- train%&gt;% select(topic_number)
+
+train &lt;- bind_cols(m %&gt;% as.data.frame(), ytrain)
+
+
+xtest &lt;- testdataset %&gt;% select(-topic)
+
+
+
+library(catboost)
+
+fit_params &lt;- list(iterations = 800,
+                   loss_function = &#39;MultiClass&#39;,
+                   task_type = &#39;GPU&#39;, 
+                   logging_level=&#39;Silent&#39;)
+
+pool = catboost.load_pool(m %&gt;% as.data.frame(), label = ytrain$topic)
+
+model &lt;- catboost.train(pool, params = fit_params)</code></pre>
+<pre><code>## Warning: less than 75% gpu memory available for training. Free: 5085.5625 Total: 7979.3125</code></pre>
+<pre class="r"><code>xtest_pool &lt;- catboost.load_pool(xtest)
+
+prediction &lt;- catboost.predict(model, xtest_pool, prediction_type = &quot;Class&quot;)
+
+
+
+
+
+evaluation_metrics &lt;- crfsuite::crf_evaluation(testdataset$topic_number, prediction)
+
+data.frame(mcc=mltools::mcc(testdataset$topic_number, prediction), evaluation_metrics$overall %&gt;% t())</code></pre>
+<pre><code>##         mcc  accuracy precision    recall specificity        f1 precision_mean
+## 1 0.9214169 0.9285714 0.9384216 0.9285714   0.9951473 0.9312292      0.8423833
+##   recall_mean specificity_mean   f1_mean
+## 1   0.9485771        0.9955129 0.9129754</code></pre>
+<p>That’s neat!</p>
+<p><img src="bender.gif" /></p>
+<style type="text/css">
+
+@import url(https://fonts.googleapis.com/css?family=Open+Sans:wght@300);
+
+body{ /* Normal  */
+      font-size: 16px;
+      font-family: "Open Sans";
+  }
+
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 20px;
+  color: #324c63;
+}
+h1 { /* Header 1 */
+  font-size: 30px;
+  font-family: "Roboto";
+}
+h2 { /* Header 2 */
+    font-size: 26px;
+    font-family: "Roboto";
+}
+h3 { /* Header 3 */
+  font-size: 22px;
+  font-family: "Roboto";
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+    color: white;
+    background-color: black;
+}
+
+p { /* Code block - determines code spacing between lines */
+    font-size: 18px;
+    font-family: "Open Sans";
+    margin: 0px 0px 30px;
+    padding: 10px;
+    line-height: 200%;
+}
+</style>
+</div>
+</div>
