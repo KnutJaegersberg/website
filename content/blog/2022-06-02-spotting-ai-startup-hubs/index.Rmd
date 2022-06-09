@@ -1,0 +1,473 @@
+---
+title: AI startup hubs  
+author: Knut Jägersberg
+date: '2022-06-02'
+slug: []
+categories:
+  - Data Science
+tags:
+  - Data Journalism
+---
+
+
+# Where are some corporate AI hubs? 
+
+
+## Some Context: Digital Intelligence Index
+
+
+The Digital Intelligence Index by Fletcher School / Tufts University is nice context information for this little research (data source: https://digitalintelligence.fletcher.tufts.edu/trajectory). They gathered a wide array of secundary data sources per country, aggregated into clusters, components, drivers and final scores rescaled from 0 to 100, estimating how overall digitally mature a nations economy is.  
+In particular, their scoring for the scorecard component innovation and change is interesting, because AI startups are part of that.  
+Innovation Momentum might indicate the near future, whereas overall digital innovative indicator signals the current state. 
+This is more a set of negative indicators, i.e. scoring low means there is properly not a lot of AI startup activity to find in that location. Arguably, the high performers might be more likely to have some AI business activity and possess a mature business ecosystem for AI companies, so this is where we will try to collect data.    
+
+
+
+```{r}
+pacman::p_load(tidyverse, tmap, openxlsx, sf, tidytable, data.table, tidytext, arrow, rvest, reclin, maps, mapview)
+
+dindex <- openxlsx::read.xlsx("https://sites.tufts.edu/digitalplanet/digitalintelligence/DIIData2020", sheet = "Digital Evolution Main", startRow = 2)
+
+
+data("World")
+
+
+World2 <- left_join(World, dindex %>% select(Entity, `Overall Digital Evolution`=Innovation.and.Change.Zone, `Digital Evolution Rank`=Digital.Evolution.Score.Rank, `Digital Evolution Momentum (Rank)`=Innovation.and.Change.Momentum.Rank, `Innovativeness Rank` =Innovation.and.Change.Score.Rank, Innovation.and.Change.Score, `Innovation Momentum Indicator` = Innovation.and.Change.Momentum, iso_a3=ISO3C))
+
+World2 <- st_sf(World2)
+
+tm_shape(World2) +
+  tm_polygons(col = "Digital Evolution Momentum (Rank)",
+              legend.hist = TRUE, palette = "seq", style = "order") +
+  tm_layout(legend.outside = F, aes.palette = list(seq = "-RdBu"))
+
+```
+
+
+
+
+```{r}
+tm_shape(World2) +
+  tm_polygons(col = "Innovativeness Rank",              
+  #            style = "kmeans",
+              legend.hist = TRUE, palette = "RdGy") +
+  tm_layout(legend.outside = F)
+
+```
+
+### Overall Digital Maturity and Potential
+
+Example places where one might expect to find mature and thriving AI hubs:  
+- USA  
+- Germany, Poland, Ireland   
+- China  
+
+
+
+### AI company locations
+
+I scraped a few datasets about AI startup and AI company locations. Let's first find out where AI hubs are. Because the talent concentrates there, we can use this to narrow down our search for AI startup hubs.  
+```{r}
+ai_companies <- fread("/run/media/knut/HD/MLearningAlgoTests/aicompanies.csv")
+
+ai_companies %>% select(company, website, location) %>% sample_n(10)
+```
+
+
+Locations column need some work. 
+
+```{r}
+source("/home/knut/Documents/clean.R")
+
+ai_companies <- ai_companies %>% mutate(location=clean(str_squish(str_replace_all(location, '([[:upper:]])', ' \\1')))) %>% separate_rows(location, sep = "([[:upper:]])") %>% unnest_ngrams("ngram", "location", n_min = 1, drop = F)
+
+cities <- fread("https://gist.githubusercontent.com/curran/13d30e855d48cdd6f22acdf0afe27286/raw/0635f14817ec634833bb904a47594cc2f5f9dbf8/worldcities_clean.csv") %>% mutate(location=tolower(city)) %>% select(location, country, population) %>% arrange(location, desc(population)) 
+cities <- cities[!duplicated(location)] %>% select(-population)
+
+
+ai_companies <- ai_companies %>% inner_join(cities) %>% select(-ngram) %>% distinct()
+
+print(c(nrow(ai_companies), nrow(fread("/run/media/knut/HD/MLearningAlgoTests/aicompanies.csv"))))
+
+```
+
+The database has 3.5k records after cleaning, but of a total of 12k records. Let's take a look which countries have the most AI companies according to this source:  
+
+```{r}
+ggcharts::bar_chart(ai_companies, country, top_n = 30)
+```
+
+There is more in here. I'm forcing myself to do a quick and dirty job, not exhaustive information extraction. It's just a blog post.  
+
+```{r}
+
+kg_names <- read_parquet("/run/media/knut/HD/MLearningAlgoTests/data/polar/w5mentities.parquet") %>% separate.(label, c("selector", "disambiguation"), sep = "[(]") %>% mutate.(disambiguation=str_remove(disambiguation, "[)]"))
+
+kg_names_locations <- kg_names %>% right_join.(cities%>% mutate(nchar=nchar(location)) %>% filter(nchar>3) %>% mutate.(selector=location)) %>% left_join.(kg_names %>% select.(wikientity, spelling=selector) %>% mutate.(spelling=str_squish(spelling))) %>% distinct.() %>% mutate(nchar2=nchar(spelling)) %>% filter(nchar2>3) 
+
+kg_names_locations[is.na(kg_names_locations$spelling),"spelling"] <- kg_names_locations[is.na(kg_names_locations$spelling),"selector"]
+
+
+
+chinese_cities_spellings <- read_html("https://en.wikipedia.org/wiki/List_of_cities_in_China") %>% html_node("table.selected_now") %>% html_table() %>% select(location=City, spelling=Chinese) %>% mutate(location=tolower(location), country="China")
+
+kg_names_locations <- kg_names_locations %>% select.(location, country, spelling) %>% bind_rows.(chinese_cities_spellings)
+kg_names_locations <- kg_names_locations %>% distinct.()
+
+
+websites_html <- arrow::read_parquet("/run/media/knut/HD/MLearningAlgoTests/aistartup2") %>% na.omit() 
+websites_html2 <- arrow::read_parquet("/run/media/knut/HD/MLearningAlgoTests/aicompanies_websites2") %>% na.omit() 
+
+websites_html <- bind_rows.(websites_html, websites_html2)
+
+
+
+websites_ngrams <- websites_html %>% unnest_ngrams("ngram", body, n_min = 1)
+
+
+locations_quick <- websites_ngrams %>% mutate(ngram=tolower(ngram)) %>% inner_join.(kg_names_locations %>% rename(ngram=spelling)) %>% rename(spelling=ngram) %>% distinct.()
+
+suffix <- locations_quick %>% mutate(suffix=urltools::domain(source) %>% urltools::suffix_extract())
+suffix <- suffix$suffix$suffix
+locations_clean <- locations_quick %>% mutate(suffix=suffix)
+
+country_codes <- read_html("https://www.sitepoint.com/complete-list-country-code-top-level-domains/") %>% html_table("td", header = F, trim = T) %>% as.data.frame()%>% filter(X1%in%c(".ai", ".io", ".com")==F) %>% rename(suffix=X1, Country=X2) %>% mutate(suffix=str_remove(suffix, ".")) %>% mutate(Country=str_replace(Country, "People's Republic of China", "China")) %>% mutate(Country=str_replace(Country, "United States of America", "United States"))
+
+locations_clean <- locations_clean %>% left_join.(country_codes)
+
+
+
+locations_filter <- locations_clean %>% filter(suffix%in%c("co", "ai", "com", "net", "org")==F) %>% mutate(country=ifelse(suffix=="io", "United States", country)) %>% filter(country==Country)
+```
+
+
+I am mostly interested in grabbing the address data from the small address boxes usually at the bottom of the website. As a simple heuristic, I parse all data with libpostal docker container, which can classify location strings as belonging to cities, streetnames etc. If the city is from the same country, I'll add it to the data. I checked how often it is right with a sample. More than 90%, though there is some data loss, some companies are on multiple locations.  
+
+
+```{bash}
+# docker run -d -p 8070:8080 clicksend/libpostal-rest 
+```
+
+
+Using a knowledge graph and other stuff to get a few more records out of here. These measures yield ca 3800 records, roughly 300 more, many new records from India, as shown below (only the new records).  
+
+```{r, message=F}
+
+
+parse_address <- function(address, source) {
+  prep_query  <- function(x) {
+    paste0('{"query": "', x , '"}')
+  }
+  query <- prep_query(clean(address))
+  query %>%
+    purrr::map_dfr(~
+      httr::POST(url="localhost:8070/parser", body = .x) %>%
+      httr::content("text", encoding = "UTF-8") %>%
+      jsonlite::fromJSON() %>% mutate(source=source)
+    )
+
+}
+
+
+safeparse <- possibly(parse_address, otherwise = data.table(label=c(), value=c(), source=c()))
+
+
+
+
+websites_html <- arrow::read_parquet("/run/media/knut/HD/MLearningAlgoTests/aistartup2") %>% na.omit() 
+websites_html2 <- arrow::read_parquet("/run/media/knut/HD/MLearningAlgoTests/aicompanies_websites2") %>% na.omit() 
+
+websites_html <- bind_rows.(websites_html, websites_html2)
+
+#adresses_extracted <-purrrgress::pro_map2_dfr(.x = websites_html$body, .y = websites_html$source, .f = safeparse)
+
+adresses_extracted <- arrow::read_parquet("/run/media/knut/HD/MLearningAlgoTests/aicompanies_websites_adresses")
+
+
+roads <- adresses_extracted %>% filter.(label=="road") %>% distinct.(source, value, label)
+city <- adresses_extracted %>% filter.(label=="city") %>% distinct.(source, value, label)
+
+
+kg_names <- read_parquet("/run/media/knut/HD/MLearningAlgoTests/data/polar/w5mentities.parquet") %>% separate.(label, c("selector", "disambiguation"), sep = "[(]") %>% mutate.(disambiguation=str_remove(disambiguation, "[)]"))
+
+kg_names_locations <- kg_names %>% right_join.(cities%>% mutate(nchar=nchar(location)) %>% filter(nchar>3) %>% mutate.(selector=location)) %>% left_join.(kg_names %>% select.(wikientity, spelling=selector) %>% mutate.(spelling=str_squish(spelling))) %>% distinct.() %>% mutate(nchar2=nchar(spelling)) %>% filter(nchar2>3) 
+
+kg_names_locations[is.na(kg_names_locations$spelling),"spelling"] <- kg_names_locations[is.na(kg_names_locations$spelling),"selector"]
+
+
+
+chinese_cities_spellings <- read_html("https://en.wikipedia.org/wiki/List_of_cities_in_China") %>% html_node("table.selected_now") %>% html_table() %>% select(location=City, spelling=Chinese) %>% mutate(location=tolower(location), country="China")
+
+kg_names_locations <- kg_names_locations %>% select.(location, country, spelling) %>% bind_rows.(chinese_cities_spellings)
+kg_names_locations <- kg_names_locations %>% distinct.()
+
+
+city_confirmed <- city %>% mutate(value=tolower(value)) %>% inner_join.(kg_names_locations %>% rename(value=spelling)) %>% rename(spelling=value) %>% distinct.()
+
+body <- websites_html%>% inner_join.(city_confirmed)
+
+
+suffix <- body %>% mutate(suffix=urltools::domain(source) %>% urltools::suffix_extract())
+suffix <- suffix$suffix$suffix
+body <- body %>% mutate(suffix=suffix)
+
+country_codes <- read_html("https://www.sitepoint.com/complete-list-country-code-top-level-domains/") %>% html_table("td", header = F, trim = T) %>% as.data.frame()%>% filter(X1%in%c(".ai", ".io", ".com")==F) %>% rename(suffix=X1, Country=X2) %>% mutate(suffix=str_remove(suffix, ".")) %>% mutate(Country=str_replace(Country, "People's Republic of China", "China")) %>% mutate(Country=str_replace(Country, "United States of America", "United States"))
+
+
+ai_companies_no_proc <- fread("/run/media/knut/HD/MLearningAlgoTests/aicompanies.csv")
+
+body_city <- body %>% left_join.(country_codes) %>% filter(country==Country) %>% distinct.(-body) %>% inner_join.(ai_companies_no_proc %>% select(source=website, company))
+
+
+ai_companies_more <- bind_rows.(locations_filter%>% inner_join.(ai_companies_no_proc %>% select(source=website, company)), body_city)
+
+ai_companies_more <- ai_companies_more %>% distinct(company, location, country, source) %>% as.data.frame() %>% filter(company%in%c("SIS Software GmbH", "JOBFIE", "Neurobotics", "Rai")==F, location%in%c("orange", "mobile")==F) %>% bind_rows.(ai_companies_more%>% filter(company%in%c("Neurobotics")==T) %>% filter(location=="moscow"))
+                                
+ai_companies <- ai_companies %>% bind_rows.(ai_companies_more)%>% distinct(company, location, country) %>% as.data.frame()
+
+
+
+ggcharts::bar_chart(ai_companies_more, country, top_n = 30)
+
+#roads_cities <- roads %>% inner_join.(adresses_extracted)
+```
+
+
+
+# Further datasets
+
+I also collected two other datasets. Now we have to merge and deduplicate them.  
+
+```{r}
+ai_startups_europe <- openxlsx::read.xlsx("/run/media/knut/HD/MLearningAlgoTests/ai_startups.xlsx", sheet = 1)
+
+ai_startups_world <- openxlsx::read.xlsx("/run/media/knut/HD/MLearningAlgoTests/ai_startups.xlsx", sheet = 2)
+
+
+ai_startups_europe %>% sample_n(10)
+```
+
+
+```{r}
+ai_startups_world %>% sample_n(10)
+```
+
+I use the reclin package for record linkage deduplication based on string edit distance (jaccard). For the first two datasets, there are only a few duplicates.  
+
+```{r}
+
+world_s <- ai_startups_world %>% select(company=Name, country=Country, location=City)%>% mutate(location=tolower(location))
+
+europe <- ai_startups_europe %>% select(company=Name, country=Country, location=City)%>% mutate(location=tolower(location))
+
+p <- pair_blocking(world_s, europe, large = FALSE)
+p <- compare_pairs(p, by = c("company", "location", "country"))
+p <- compare_pairs(p, by = c("company", "location", "country"),
+  default_comparator = jaccard(0.9), overwrite = TRUE)
+p <- score_simsum(p, var = "simsum")
+m <- problink_em(p)
+p <- score_problink(p, model = m, var = "weight")
+p <- select_threshold(p, "weight", var = "threshold", threshold = 18.94455)
+p <- add_from_x(p, id_x = "id")
+
+linked_data_set <- link(p) %>% na.omit()
+
+linked_data_set
+
+```
+
+There were some duplicates in the scraped dataset. Getting rid of them here.  
+
+```{r}
+
+both <- world_s %>% bind_rows.(europe %>% filter(company%in%linked_data_set$company.y==F)) %>% distinct.() %>% na.omit()
+
+
+p <- pair_blocking(ai_companies, ai_companies, large = FALSE)
+p <- compare_pairs(p, by = c("company", "location", "country"))
+p <- compare_pairs(p, by = c("company", "location", "country"),
+  default_comparator = jaccard(0.9), overwrite = TRUE)
+p <- score_simsum(p, var = "simsum")
+m <- problink_em(p)
+p <- score_problink(p, model = m, var = "weight")
+p <- select_threshold(p, "weight", var = "threshold", threshold = 10.95548)
+p <- add_from_x(p, id_x = "id")
+p <- p %>% filter(weight<16.40807)
+linked_data_set <- link(p) %>% na.omit()
+
+linked_data_set
+
+```
+These are mostly literal matches.  
+
+```{r}
+
+ai_companies <- ai_companies%>% filter(company%in%linked_data_set$company.y==F) 
+
+
+p <- pair_blocking(ai_companies, both, large = FALSE)
+p <- compare_pairs(p, by = c("company", "location", "country"))
+p <- compare_pairs(p, by = c("company", "location", "country"),
+  default_comparator = jaccard(0.9), overwrite = TRUE)
+p <- score_simsum(p, var = "simsum")
+m <- problink_em(p)
+p <- score_problink(p, model = m, var = "weight")
+p <- select_threshold(p, "weight", var = "threshold", threshold = 9.959988)
+p <- add_from_x(p, id_x = "id")
+p <- p %>% filter(weight<16.40807)
+linked_data_set <- link(p) %>% na.omit()
+
+linked_data_set
+
+```
+
+Unsurprisingly, this dataset will have some bias, but it should work fine to show AI hubs. Below how many companies come from the top 30 countries. The dataset contains more than 7k AI companies. 
+
+```{r}
+ai_companies_all <- ai_companies %>% bind_rows.(both %>% filter(company%in%linked_data_set$company.y==F)) %>% distinct.()
+
+
+ggcharts::bar_chart(ai_companies_all, country, top_n = 30)
+```
+
+
+# AI hubs around the world
+
+
+
+```{r}
+
+ai_companies_per_city <- ai_companies_all %>% group_by(location, country) %>% count(sort = T)%>% rename(`Companies in City`=n) %>% mutate(country=str_replace(country, "United States", "USA"), large=ifelse(`Companies in City`>9, location, NA)) 
+
+
+ai_companies_per_country <- ai_companies_all %>% group_by(country) %>% count(sort = T) %>% rename(`Companies in Country`=n)
+
+
+
+World3 <- left_join(World, ai_companies_per_country %>% rename(name=country)) %>% ungroup()
+
+World3 <- st_sf(World3)
+
+ai_cities <- world.cities %>% mutate(location=tolower(name)) %>% inner_join.(ai_companies_per_city, by=c("location"="location", "country.etc"="country")) %>% filter(location!="mobile")
+
+
+cities <- ai_cities %>%
+  st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
+  st_cast("POINT")
+
+tmap_mode("plot")
+
+ai_hubs <- tm_shape(World3) +
+  tm_polygons(col = "Companies in Country", style = "fisher", palette = "-RdGy", n=10) +
+  tm_layout(legend.outside = F) + tm_shape(cities)+tm_bubbles(size = "Companies in City", col = "Companies in City", palette="Blues")  + tmap::tm_style("grey")+ tm_text("large", size = "Companies in City")
+
+
+
+ai_hubs
+
+```
+
+```{r}
+library(sf)
+north_america <- st_bbox(cities %>% filter(country.etc %in% c("USA", "Canada", "Mexico")))
+
+
+tm_shape(World3, bbox = north_america) +
+  tm_polygons(col = "Companies in Country", style = "fisher", palette = "-RdGy", n=10) +
+  tm_layout(legend.outside = F) + tm_shape(cities)+tm_bubbles(size = "Companies in City", col = "Companies in City", palette="Blues")  + tmap::tm_style("grey")+ tm_text("large", size = 0.5)+ tm_legend(show=FALSE)
+
+
+```
+
+## Hubs, hubs almost everywhere 
+
+```{r}
+europe <- st_bbox(cities %>% filter(country.etc %in% c("Spain", "Finland", "Turkey", "Ireland")))
+
+
+tm_shape(World3, bbox = europe) +
+  tm_polygons(col = "Companies in Country", style = "fisher", palette = "-RdGy") +
+  tm_layout(legend.show = F) + tm_shape(cities)+tm_bubbles(size = "Companies in City", col = "Companies in City", palette="Blues")  + tmap::tm_style("grey")+ tm_text("large", size = 0.5)+ tm_legend(show=FALSE)
+```
+
+
+
+
+```{r}
+east_asia <- st_bbox(cities %>% filter(country.etc %in% c("China", "Japan")))
+
+
+tm_shape(World3, bbox = east_asia) +
+  tm_polygons(col = "Companies in Country", style = "fisher", palette = "-RdGy") +
+  tm_layout(legend.show = F) + tm_shape(cities)+tm_bubbles(size = "Companies in City", col = "Companies in City", palette="Blues")  + tmap::tm_style("grey")+ tm_text("large", size = 0.8)+ tm_legend(show=FALSE)
+```
+
+```{r}
+india <- st_bbox(cities %>% filter(country.etc %in% c("India")))
+
+
+tm_shape(World3, bbox = india) +
+  tm_polygons(col = "Companies in Country", style = "fisher", palette = "-RdGy") +
+  tm_layout(legend.show = F) + tm_shape(cities)+tm_bubbles(size = "Companies in City", col = "Companies in City", palette="Blues")  + tmap::tm_style("grey")+ tm_text("large", size = 0.8)+ tm_legend(show=FALSE)
+```
+
+And the table itself.  
+```{r}
+ai_companies_all
+```
+
+
+
+Could be more could be less ;) 
+
+
+
+<style type="text/css">
+
+@import url(https://fonts.googleapis.com/css?family=Open+Sans:wght@300);
+
+body{ /* Normal  */
+      font-size: 16px;
+      font-family: "Open Sans";
+  }
+
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 20px;
+  color: #324c63;
+}
+h1 { /* Header 1 */
+  font-size: 30px;
+  font-family: "Roboto";
+}
+h2 { /* Header 2 */
+    font-size: 26px;
+    font-family: "Roboto";
+}
+h3 { /* Header 3 */
+  font-size: 22px;
+  font-family: "Roboto";
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+    color: white;
+    background-color: black;
+}
+
+p { /* Code block - determines code spacing between lines */
+    font-size: 18px;
+    font-family: "Open Sans";
+    margin: 0px 0px 30px;
+    padding: 10px;
+    line-height: 200%;
+}
+</style>
+
+
+
+

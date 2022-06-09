@@ -1,0 +1,302 @@
+---
+title: Training a sectorial AI startup classifier with BERT hyperparameter tuning and transformer intertraining 
+author: Knut Jägersberg
+date: '2022-05-28'
+slug: []
+categories:
+  - Data Science
+tags:
+  - Natural Language Processing
+  - Text Classification
+  
+output:
+  blogdown::html_page:
+    toc: true
+---
+
+
+
+# BERT hyperparameter tuning vs intertraining transformers vs SetFit vs zero-shot classification for AI startup classification  
+
+Transformers have become a go-to architecture for a wide range of NLP tasks. However, tuning their hyperparameters still is a less widespread practice than you might think. This is mostly because there are few easy to use autoML tools for this task, especially if you want to tune your hyperparameters locally. The community tends to use Bayesian optimization, yielding importance measures of the most impactful hyperparameters. Eventhough out of the box performance is usually good, considerable gains can be made, i.e. examples with 10 % accuracy boosts are around. 
+A simple grid search on these hyperparameter ranges found by the community already is a big step forward, which I will code up here.  
+In this post I will compare hyperparameter tuning gains with gains from intertraining transformers on clustering solutions. Research suggests potential to improve results with fine tuninng transformers on clusters and pseudolabels before finetuninng on the actual task, especially if they are informative about the classes when we deal with small trainingdatasets ranging between 200-2k records (see https://www.aaai.org/AAAI22Papers/AAAI-9945.Ein-DorL.pdf).  Of course we will also combine the techniques. 
+Curiously, SetFit is a radically simple, efficient few-shot classification method: We finetune sentence transformers on the similarity taks on a few examples per category in a binary classification setting (category yes or no) and add a logistic regression on the sentence embeddings. The probability can be used for multi-classification by picking the category where the one-vs-rest probability is the largest (see https://towardsdatascience.com/sentence-transformer-fine-tuning-setfit-outperforms-gpt-3-on-few-shot-text-classification-while-d9a3788f0b4e).  
+Finally, we can use the few-shot and zero-shot classifiers (reknown huggingface NLI based ones) for weak labeling, as further input for intertraining.  
+The example problem is AI startup classification by market sector using short. My hypothesis is I can use one sentence descriptions of each company to identify their overall niche, so I can identifying AI trends from relevant SERPS. The data source:  
+
+https://medium.com/@bootstrappingme/global-artificial-intelligence-landscape-including-database-with-3-465-ai-companies-3bf01a175c5d  
+
+
+![Clickbait](startups.png)
+
+
+
+## Data preparation
+
+The data only needs minimal cleaning. I will remove the company name. 
+
+```{r}
+pacman::p_load(tidyverse, tidytable, openxlsx, qualV)
+
+startups <- openxlsx::read.xlsx("/run/media/knut/HD/MLearningAlgoTests/data/ai_startups.xlsx", sheet = 3) %>% rename(Market=`Category.-.Final`)
+
+
+head(startups %>% select(Country, Market, Name, Description))
+
+```
+
+
+Removing company names from descriptions, rough fix. 
+
+```{r}
+
+startups_clean <- startups %>% select(Market, Name, Description) %>% na.omit() %>% mutate(text=tolower(Description), helper_col=tolower(Name))
+
+source("/run/media/knut/HD/MLearningAlgoTests/clean.R")
+
+LCS <- purrr::map2(.x = startups_clean$text, .y = startups_clean$helper_col, .f = PTXQC::LCS) %>% rlist::list.rbind()
+
+
+
+startups_clean <- startups_clean %>% mutate(text=clean(str_replace(text, LCS, "Our company")))
+
+startups_clean %>% pull(text) %>% head(10)
+
+```
+
+Check class imbalance. 
+
+```{r}
+ggcharts::bar_chart(startups_clean, Market)
+```
+
+Eventhough some classes have few records, the data looks good, per se for data augmentation. Skimming it somes some signal in even in classes with few queries, so I will avoid disgarding them. 
+
+
+```{r}
+startups_clean %>% filter(Market%in%c("Manufacturing", "Insurance", "Education", "Energy", "Real Estate")) %>% arrange(Market)
+```
+
+## Dataset splitting
+
+Since I compare different approaches (acting like different ML algorithms compared to each other), I need an extra validation split, even if the underlying algorithm makes another validation split in the (balanced) train data: I compare transformer hyperparameter tuning with different intertraining procedures and a combined approach. After I selected the best one, an unbiased estimate comes from a withheld testset.   
+I use twinning algorithm (https://arxiv.org/abs/2110.02927) on sentence embeddings for optimal train, validation and test set splitting (75 %, 12.5 %, 12.5 %). Research by the creators of twinning showed the algorithm can improve sampling for tabular data, as it explicitly preserves statistical properties of the splits. This works for precise semantic representations as well. 
+
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+library(reticulate)
+use_python("/home/knut/transformers/bin/python3", required = T)
+  
+  
+st <- reticulate::import("sentence_transformers")
+
+model <- st$SentenceTransformer('all-mpnet-base-v2')
+embeddings = model$encode(startups_clean$text)
+
+
+library(twinning)
+
+multiplet_idx <- twinning::multiplet(embeddings %>% bind_cols(startups_clean %>% select(Market) %>% mutate(Market=as.factor(Market))), k = 8, strategy = 2)
+
+
+train = startups_clean[which(multiplet_idx %in% c(1,2,3,4,5,6)), ]
+validation = startups_clean[which(multiplet_idx %in% c(7)), ]
+test = startups_clean[which(multiplet_idx %in% c(8)), ]
+
+
+```
+
+
+## Data augmentation for upsampling
+
+
+Let's try these tools for data augmentation from the reknown nlpaug library: 
+- backtranslation
+- roberta word substitutions
+- fasttext word substitutions
+- synonym substitutions according to wordnet / ppdb 
+
+On top of that we upsample records for the few categories for which a 5 fold is not enough. 
+
+
+
+```{r, results=FALSE, warning=FALSE, message=FALSE}
+
+startups_small_cats <- startups_clean %>% group_by(Market) %>% count(sort = T) %>% filter(n<200)
+startups_clean_upsample <- train %>% filter(Market%in%startups_small_cats$Market)
+
+
+library(reticulate)
+use_python("/home/knut/transformers/bin/python3", required = T)
+  
+  
+nlpaug <- reticulate::import("nlpaug.augmenter.word")
+  
+back_translation <- nlpaug$BackTranslationAug(from_model_name = 'facebook/wmt19-en-de', 
+                          to_model_name='facebook/wmt19-de-en', device = "cuda")
+
+
+
+back_translate <- function(text){back_translation$augment(data = text)}
+
+back_translated <- purrrgress::pro_map(.x = startups_clean_upsample$text, .f = back_translate) %>% rlist::list.rbind()
+
+
+
+roberta <- nlpaug$ContextualWordEmbsAug(model_path="roberta-base", action="substitute", aug_max=as.integer(3), device = "cuda")
+
+
+augment <- function(text){roberta$augment(data = text)}
+
+roberta_augmentation <- purrrgress::pro_map(.x = startups_clean_upsample$text, .f = augment) %>% rlist::list.rbind()
+
+
+fasttext <- nlpaug$WordEmbsAug(model_type=as.character("fasttext"), model_path=as.character("/home/knut/nlpaug/embs/wiki.en/wiki.en.vec"), action=as.character("substitute"), aug_max=as.integer(3))
+
+
+augment <- function(text){fasttext$augment(data = text)}
+
+fasttext_augmentation <- purrrgress::pro_map(.x = startups_clean_upsample$text, .f = augment) %>% rlist::list.rbind()
+
+
+synonym_augmenter_wordnet <- nlpaug$SynonymAug(aug_src='wordnet')
+
+augment <- function(text){synonym_augmenter_wordnet$augment(data = text)}
+
+
+wordnet_augmentation <- purrrgress::pro_map(.x = startups_clean_upsample$text, .f = augment) %>% rlist::list.rbind()
+
+
+aug = nlpaug$SynonymAug(aug_src='ppdb', model_path="/home/knut/nlpaug/ppdb-2.0-s-all")
+augment <- function(text){aug$augment(data = text)}
+
+
+ppdb_synonym_augmentation <- purrrgress::pro_map(.x = startups_clean_upsample$text, .f = augment) %>% rlist::list.rbind()
+
+
+size_largest_category <- train %>% group_by(Market) %>% count(sort = T) %>% ungroup() %>% slice_head(n = 1) %>% pull(n)
+
+train_augmented <- startups_clean_upsample %>% mutate(back_translated=back_translated, roberta_augmentation=roberta_augmentation, fasttext_augmentation=fasttext_augmentation, wordnet_augmentation=wordnet_augmentation, ppdb_synonym_augmentation=ppdb_synonym_augmentation)
+
+
+train_augmented <- train_augmented %>% select(-helper_col) %>% data.table::melt(id.vars=colnames(train_augmented)[1:3]) %>% rename(text=value)
+startups_clean_upsample_no <- train %>% filter(Market%in%startups_small_cats$Market== F)
+
+
+augmented_dataset <- startups_clean_upsample_no %>% bind_rows(train_augmented)
+
+upsample_dataset <- caret::upSample(startups_clean, startups_clean$Market, list = F)$x
+
+train_upsampled <- augmented_dataset %>% bind_rows(upsample_dataset) %>% group_by(Market) %>% slice_head(n = size_largest_category)
+
+
+train_upsampled %>% group_by(Market) %>% count(sort = T)
+```
+
+
+## Baseline Model
+
+First we try a simple baseline model. It appears the problem is not very easy. 
+
+```{r}
+classes <- data.frame(labels=startups_clean$Market %>% as.factor() %>% as.numeric() %>% -1, Market=startups_clean$Market) %>% distinct()
+
+ttrain <- train_upsampled %>% ungroup() %>% inner_join(classes) %>% select(text, labels) %>% as.data.frame()
+
+teval <- validation %>% inner_join(classes) %>% select(text, labels)
+
+# fastSave::load.lbzip2("/run/media/knut/HD/MLearningAlgoTests/aistartup")
+
+library(quanteda)
+upsampled_dfm <- dfm(ttrain$text)
+
+
+training_dfm <- dfm(ttrain$text, remove = quanteda::stopwords("english"), stem = TRUE) %>% dfm_tfidf() #%>% dfm_trim(min_termfreq = 3000, termfreq_type = "rank")
+
+eval_dfm <- dfm(teval$text) %>% dfm_match(featnames(training_dfm)) 
+
+model <- quanteda.textmodels::textmodel_nb(x = training_dfm, ttrain$labels)
+
+predictions <- predict(model, eval_dfm) %>% as.data.frame()
+
+evaluation_metrics <- crfsuite::crf_evaluation(teval$labels, predictions$.)
+
+data.frame(mcc=mltools::mcc(teval$labels, predictions$. %>% as.character() %>% as.numeric()), evaluation_metrics$overall %>% t())
+```
+
+```{r}
+
+eval_labels <- teval %>% inner_join(classes %>% rename(Market_true=Market)) %>% bind_cols(data.table(labels=predictions$. %>% as.character() %>% as.numeric()) %>% inner_join(classes %>% rename(Market_true=Market)))
+
+conf_mat <- cvms::confusion_matrix(teval$labels, predictions$.)
+
+cvms::plot_confusion_matrix(conf_mat$`Confusion Matrix`[[1]])
+
+```
+
+
+
+## Transformer classification on defaults
+
+```{r, results=F}
+
+library(reticulate)
+use_python("/home/knut/transformers/bin/python3", required = T)
+  
+  
+
+ht <- import("happytransformer")
+
+model_args <- ht$TCTrainArgs()
+
+
+
+model <- ht$HappyTextClassification(model_type = "roberta", model_name = "roberta-base", num_labels=27L)
+
+model$train(input_filepath = "/run/media/knut/HD/MLearningAlgoTests/aistartuptrain.csv", args = model_args)
+
+
+
+
+eval = model$eval("/run/media/knut/HD/MLearningAlgoTests/aistartuptest2.csv")
+
+
+
+label_predictions <- data.table(label=c())
+
+
+for (i in 1:nrow(teval)){
+  prediction <- model$classify_text(teval$text[i])
+  label <- data.table(label=str_split(prediction$label, "_")[[1]][2] %>% as.numeric())
+  label_predictions <- bind_rows(label_predictions, label)
+}
+
+prediction <- model$predict(to_predict = c(teval$text))
+
+
+
+
+
+evaluation_metrics <- crfsuite::crf_evaluation(teval$label, label_predictions$label)
+
+data.frame(mcc=mltools::mcc(teval$label, label_predictions$label), evaluation_metrics$overall %>% t())
+```
+
+
+## Hyperparameter tuning
+
+
+## Clustering the data
+
+
+## Intertraining transformers
+
+
+## Intertraining transformers vs. hyperparameter tuning
+
+
+## Combining intertraining and hyperparameter tuning
+
+
+## Conclusion

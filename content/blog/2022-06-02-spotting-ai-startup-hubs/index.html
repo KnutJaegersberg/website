@@ -1,0 +1,658 @@
+---
+title: AI startup hubs  
+author: Knut Jägersberg
+date: '2022-06-02'
+slug: []
+categories:
+  - Data Science
+tags:
+  - Data Journalism
+---
+
+
+
+<div id="where-are-some-corporate-ai-hubs" class="section level1">
+<h1>Where are some corporate AI hubs?</h1>
+<div id="some-context-digital-intelligence-index" class="section level2">
+<h2>Some Context: Digital Intelligence Index</h2>
+<p>The Digital Intelligence Index by Fletcher School / Tufts University is nice context information for this little research (data source: <a href="https://digitalintelligence.fletcher.tufts.edu/trajectory" class="uri">https://digitalintelligence.fletcher.tufts.edu/trajectory</a>). They gathered a wide array of secundary data sources per country, aggregated into clusters, components, drivers and final scores rescaled from 0 to 100, estimating how overall digitally mature a nations economy is.<br />
+In particular, their scoring for the scorecard component innovation and change is interesting, because AI startups are part of that.<br />
+Innovation Momentum might indicate the near future, whereas overall digital innovative indicator signals the current state.
+This is more a set of negative indicators, i.e. scoring low means there is properly not a lot of AI startup activity to find in that location. Arguably, the high performers might be more likely to have some AI business activity and possess a mature business ecosystem for AI companies, so this is where we will try to collect data.</p>
+<pre class="r"><code>pacman::p_load(tidyverse, tmap, openxlsx, sf, tidytable, data.table, tidytext, arrow, rvest, reclin, maps, mapview)
+
+dindex &lt;- openxlsx::read.xlsx(&quot;https://sites.tufts.edu/digitalplanet/digitalintelligence/DIIData2020&quot;, sheet = &quot;Digital Evolution Main&quot;, startRow = 2)
+
+
+data(&quot;World&quot;)
+
+
+World2 &lt;- left_join(World, dindex %&gt;% select(Entity, `Overall Digital Evolution`=Innovation.and.Change.Zone, `Digital Evolution Rank`=Digital.Evolution.Score.Rank, `Digital Evolution Momentum (Rank)`=Innovation.and.Change.Momentum.Rank, `Innovativeness Rank` =Innovation.and.Change.Score.Rank, Innovation.and.Change.Score, `Innovation Momentum Indicator` = Innovation.and.Change.Momentum, iso_a3=ISO3C))</code></pre>
+<pre><code>## Joining, by = &quot;iso_a3&quot;</code></pre>
+<pre class="r"><code>World2 &lt;- st_sf(World2)
+
+tm_shape(World2) +
+  tm_polygons(col = &quot;Digital Evolution Momentum (Rank)&quot;,
+              legend.hist = TRUE, palette = &quot;seq&quot;, style = &quot;order&quot;) +
+  tm_layout(legend.outside = F, aes.palette = list(seq = &quot;-RdBu&quot;))</code></pre>
+<pre><code>## Warning: Histogram not supported for styles &quot;cont&quot; or &quot;order&quot;</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
+<pre class="r"><code>tm_shape(World2) +
+  tm_polygons(col = &quot;Innovativeness Rank&quot;,              
+  #            style = &quot;kmeans&quot;,
+              legend.hist = TRUE, palette = &quot;RdGy&quot;) +
+  tm_layout(legend.outside = F)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<div id="overall-digital-maturity-and-potential" class="section level3">
+<h3>Overall Digital Maturity and Potential</h3>
+<p>Example places where one might expect to find mature and thriving AI hubs:<br />
+- USA<br />
+- Germany, Poland, Ireland<br />
+- China</p>
+</div>
+<div id="ai-company-locations" class="section level3">
+<h3>AI company locations</h3>
+<p>I scraped a few datasets about AI startup and AI company locations. Let’s first find out where AI hubs are. Because the talent concentrates there, we can use this to narrow down our search for AI startup hubs.</p>
+<pre class="r"><code>ai_companies &lt;- fread(&quot;/run/media/knut/HD/MLearningAlgoTests/aicompanies.csv&quot;)
+
+ai_companies %&gt;% select(company, website, location) %&gt;% sample_n(10)</code></pre>
+<pre><code>##               company                                   website
+##  1:     Cyber Surgery                 https://cyber-surgery.com
+##  2:       Oneclick.Ai                    http://www.oneclick.ai
+##  3:            Journi                      http://journiapp.com
+##  4:  Talus Bioscience     https://www.talus.biohttp://talus.bio
+##  5: Overwatch Imaging           http://www.overwatchimaging.com
+##  6:  Augury (company) https://www.augury.com/https://augury.com
+##  7:             Synap                         https://synap.ac/
+##  8:          TripGuru                        http://tripguru.io
+##  9:         PrepFlash                  http://www.prepflash.com
+## 10: Sticky Technology  http://stickytechnology.net/spiralvortex
+##                                location
+##  1:                       San Sebastián
+##  2:                Bellevue, Washington
+##  3:                       ViennaAustria
+##  4:                             Seattle
+##  5:                  Hood River, Oregon
+##  6:               New York CityNew York
+##  7:                               ‌Leeds
+##  8:                              London
+##  9: Austin, TexasCollege Station, Texas
+## 10:                         Mexico City</code></pre>
+<p>Locations column need some work.</p>
+<pre class="r"><code>source(&quot;/home/knut/Documents/clean.R&quot;)
+
+ai_companies &lt;- ai_companies %&gt;% mutate(location=clean(str_squish(str_replace_all(location, &#39;([[:upper:]])&#39;, &#39; \\1&#39;)))) %&gt;% separate_rows(location, sep = &quot;([[:upper:]])&quot;) %&gt;% unnest_ngrams(&quot;ngram&quot;, &quot;location&quot;, n_min = 1, drop = F)
+
+cities &lt;- fread(&quot;https://gist.githubusercontent.com/curran/13d30e855d48cdd6f22acdf0afe27286/raw/0635f14817ec634833bb904a47594cc2f5f9dbf8/worldcities_clean.csv&quot;) %&gt;% mutate(location=tolower(city)) %&gt;% select(location, country, population) %&gt;% arrange(location, desc(population)) 
+cities &lt;- cities[!duplicated(location)] %&gt;% select(-population)
+
+
+ai_companies &lt;- ai_companies %&gt;% inner_join(cities) %&gt;% select(-ngram) %&gt;% distinct()</code></pre>
+<pre><code>## Joining, by = &quot;location&quot;</code></pre>
+<pre class="r"><code>print(c(nrow(ai_companies), nrow(fread(&quot;/run/media/knut/HD/MLearningAlgoTests/aicompanies.csv&quot;))))</code></pre>
+<pre><code>## [1]  3508 12487</code></pre>
+<p>The database has 3.5k records after cleaning, but of a total of 12k records. Let’s take a look which countries have the most AI companies according to this source:</p>
+<pre class="r"><code>ggcharts::bar_chart(ai_companies, country, top_n = 30)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<p>There is more in here. I’m forcing myself to do a quick and dirty job, not exhaustive information extraction. It’s just a blog post.</p>
+<pre class="r"><code>kg_names &lt;- read_parquet(&quot;/run/media/knut/HD/MLearningAlgoTests/data/polar/w5mentities.parquet&quot;) %&gt;% separate.(label, c(&quot;selector&quot;, &quot;disambiguation&quot;), sep = &quot;[(]&quot;) %&gt;% mutate.(disambiguation=str_remove(disambiguation, &quot;[)]&quot;))
+
+kg_names_locations &lt;- kg_names %&gt;% right_join.(cities%&gt;% mutate(nchar=nchar(location)) %&gt;% filter(nchar&gt;3) %&gt;% mutate.(selector=location)) %&gt;% left_join.(kg_names %&gt;% select.(wikientity, spelling=selector) %&gt;% mutate.(spelling=str_squish(spelling))) %&gt;% distinct.() %&gt;% mutate(nchar2=nchar(spelling)) %&gt;% filter(nchar2&gt;3) 
+
+kg_names_locations[is.na(kg_names_locations$spelling),&quot;spelling&quot;] &lt;- kg_names_locations[is.na(kg_names_locations$spelling),&quot;selector&quot;]
+
+
+
+chinese_cities_spellings &lt;- read_html(&quot;https://en.wikipedia.org/wiki/List_of_cities_in_China&quot;) %&gt;% html_node(&quot;table.selected_now&quot;) %&gt;% html_table() %&gt;% select(location=City, spelling=Chinese) %&gt;% mutate(location=tolower(location), country=&quot;China&quot;)
+
+kg_names_locations &lt;- kg_names_locations %&gt;% select.(location, country, spelling) %&gt;% bind_rows.(chinese_cities_spellings)
+kg_names_locations &lt;- kg_names_locations %&gt;% distinct.()
+
+
+websites_html &lt;- arrow::read_parquet(&quot;/run/media/knut/HD/MLearningAlgoTests/aistartup2&quot;) %&gt;% na.omit() 
+websites_html2 &lt;- arrow::read_parquet(&quot;/run/media/knut/HD/MLearningAlgoTests/aicompanies_websites2&quot;) %&gt;% na.omit() 
+
+websites_html &lt;- bind_rows.(websites_html, websites_html2)
+
+
+
+websites_ngrams &lt;- websites_html %&gt;% unnest_ngrams(&quot;ngram&quot;, body, n_min = 1)
+
+
+locations_quick &lt;- websites_ngrams %&gt;% mutate(ngram=tolower(ngram)) %&gt;% inner_join.(kg_names_locations %&gt;% rename(ngram=spelling)) %&gt;% rename(spelling=ngram) %&gt;% distinct.()
+
+suffix &lt;- locations_quick %&gt;% mutate(suffix=urltools::domain(source) %&gt;% urltools::suffix_extract())
+suffix &lt;- suffix$suffix$suffix
+locations_clean &lt;- locations_quick %&gt;% mutate(suffix=suffix)
+
+country_codes &lt;- read_html(&quot;https://www.sitepoint.com/complete-list-country-code-top-level-domains/&quot;) %&gt;% html_table(&quot;td&quot;, header = F, trim = T) %&gt;% as.data.frame()%&gt;% filter(X1%in%c(&quot;.ai&quot;, &quot;.io&quot;, &quot;.com&quot;)==F) %&gt;% rename(suffix=X1, Country=X2) %&gt;% mutate(suffix=str_remove(suffix, &quot;.&quot;)) %&gt;% mutate(Country=str_replace(Country, &quot;People&#39;s Republic of China&quot;, &quot;China&quot;)) %&gt;% mutate(Country=str_replace(Country, &quot;United States of America&quot;, &quot;United States&quot;))</code></pre>
+<pre><code>## Warning: The `fill` argument of `html_table()` is deprecated as of rvest 1.0.0.
+## An improved algorithm fills by default so it is no longer needed.
+## This warning is displayed once every 8 hours.
+## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was generated.</code></pre>
+<pre class="r"><code>locations_clean &lt;- locations_clean %&gt;% left_join.(country_codes)
+
+
+
+locations_filter &lt;- locations_clean %&gt;% filter(suffix%in%c(&quot;co&quot;, &quot;ai&quot;, &quot;com&quot;, &quot;net&quot;, &quot;org&quot;)==F) %&gt;% mutate(country=ifelse(suffix==&quot;io&quot;, &quot;United States&quot;, country)) %&gt;% filter(country==Country)</code></pre>
+<p>I am mostly interested in grabbing the address data from the small address boxes usually at the bottom of the website. As a simple heuristic, I parse all data with libpostal docker container, which can classify location strings as belonging to cities, streetnames etc. If the city is from the same country, I’ll add it to the data. I checked how often it is right with a sample. More than 90%, though there is some data loss, some companies are on multiple locations.</p>
+<pre class="bash"><code># docker run -d -p 8070:8080 clicksend/libpostal-rest </code></pre>
+<p>Using a knowledge graph and other stuff to get a few more records out of here. These measures yield ca 3800 records, roughly 300 more, many new records from India, as shown below (only the new records).</p>
+<pre class="r"><code>parse_address &lt;- function(address, source) {
+  prep_query  &lt;- function(x) {
+    paste0(&#39;{&quot;query&quot;: &quot;&#39;, x , &#39;&quot;}&#39;)
+  }
+  query &lt;- prep_query(clean(address))
+  query %&gt;%
+    purrr::map_dfr(~
+      httr::POST(url=&quot;localhost:8070/parser&quot;, body = .x) %&gt;%
+      httr::content(&quot;text&quot;, encoding = &quot;UTF-8&quot;) %&gt;%
+      jsonlite::fromJSON() %&gt;% mutate(source=source)
+    )
+
+}
+
+
+safeparse &lt;- possibly(parse_address, otherwise = data.table(label=c(), value=c(), source=c()))
+
+
+
+
+websites_html &lt;- arrow::read_parquet(&quot;/run/media/knut/HD/MLearningAlgoTests/aistartup2&quot;) %&gt;% na.omit() 
+websites_html2 &lt;- arrow::read_parquet(&quot;/run/media/knut/HD/MLearningAlgoTests/aicompanies_websites2&quot;) %&gt;% na.omit() 
+
+websites_html &lt;- bind_rows.(websites_html, websites_html2)
+
+#adresses_extracted &lt;-purrrgress::pro_map2_dfr(.x = websites_html$body, .y = websites_html$source, .f = safeparse)
+
+adresses_extracted &lt;- arrow::read_parquet(&quot;/run/media/knut/HD/MLearningAlgoTests/aicompanies_websites_adresses&quot;)
+
+
+roads &lt;- adresses_extracted %&gt;% filter.(label==&quot;road&quot;) %&gt;% distinct.(source, value, label)
+city &lt;- adresses_extracted %&gt;% filter.(label==&quot;city&quot;) %&gt;% distinct.(source, value, label)
+
+
+kg_names &lt;- read_parquet(&quot;/run/media/knut/HD/MLearningAlgoTests/data/polar/w5mentities.parquet&quot;) %&gt;% separate.(label, c(&quot;selector&quot;, &quot;disambiguation&quot;), sep = &quot;[(]&quot;) %&gt;% mutate.(disambiguation=str_remove(disambiguation, &quot;[)]&quot;))
+
+kg_names_locations &lt;- kg_names %&gt;% right_join.(cities%&gt;% mutate(nchar=nchar(location)) %&gt;% filter(nchar&gt;3) %&gt;% mutate.(selector=location)) %&gt;% left_join.(kg_names %&gt;% select.(wikientity, spelling=selector) %&gt;% mutate.(spelling=str_squish(spelling))) %&gt;% distinct.() %&gt;% mutate(nchar2=nchar(spelling)) %&gt;% filter(nchar2&gt;3) 
+
+kg_names_locations[is.na(kg_names_locations$spelling),&quot;spelling&quot;] &lt;- kg_names_locations[is.na(kg_names_locations$spelling),&quot;selector&quot;]
+
+
+
+chinese_cities_spellings &lt;- read_html(&quot;https://en.wikipedia.org/wiki/List_of_cities_in_China&quot;) %&gt;% html_node(&quot;table.selected_now&quot;) %&gt;% html_table() %&gt;% select(location=City, spelling=Chinese) %&gt;% mutate(location=tolower(location), country=&quot;China&quot;)
+
+kg_names_locations &lt;- kg_names_locations %&gt;% select.(location, country, spelling) %&gt;% bind_rows.(chinese_cities_spellings)
+kg_names_locations &lt;- kg_names_locations %&gt;% distinct.()
+
+
+city_confirmed &lt;- city %&gt;% mutate(value=tolower(value)) %&gt;% inner_join.(kg_names_locations %&gt;% rename(value=spelling)) %&gt;% rename(spelling=value) %&gt;% distinct.()
+
+body &lt;- websites_html%&gt;% inner_join.(city_confirmed)
+
+
+suffix &lt;- body %&gt;% mutate(suffix=urltools::domain(source) %&gt;% urltools::suffix_extract())
+suffix &lt;- suffix$suffix$suffix
+body &lt;- body %&gt;% mutate(suffix=suffix)
+
+country_codes &lt;- read_html(&quot;https://www.sitepoint.com/complete-list-country-code-top-level-domains/&quot;) %&gt;% html_table(&quot;td&quot;, header = F, trim = T) %&gt;% as.data.frame()%&gt;% filter(X1%in%c(&quot;.ai&quot;, &quot;.io&quot;, &quot;.com&quot;)==F) %&gt;% rename(suffix=X1, Country=X2) %&gt;% mutate(suffix=str_remove(suffix, &quot;.&quot;)) %&gt;% mutate(Country=str_replace(Country, &quot;People&#39;s Republic of China&quot;, &quot;China&quot;)) %&gt;% mutate(Country=str_replace(Country, &quot;United States of America&quot;, &quot;United States&quot;))
+
+
+ai_companies_no_proc &lt;- fread(&quot;/run/media/knut/HD/MLearningAlgoTests/aicompanies.csv&quot;)
+
+body_city &lt;- body %&gt;% left_join.(country_codes) %&gt;% filter(country==Country) %&gt;% distinct.(-body) %&gt;% inner_join.(ai_companies_no_proc %&gt;% select(source=website, company))
+
+
+ai_companies_more &lt;- bind_rows.(locations_filter%&gt;% inner_join.(ai_companies_no_proc %&gt;% select(source=website, company)), body_city)
+
+ai_companies_more &lt;- ai_companies_more %&gt;% distinct(company, location, country, source) %&gt;% as.data.frame() %&gt;% filter(company%in%c(&quot;SIS Software GmbH&quot;, &quot;JOBFIE&quot;, &quot;Neurobotics&quot;, &quot;Rai&quot;)==F, location%in%c(&quot;orange&quot;, &quot;mobile&quot;)==F) %&gt;% bind_rows.(ai_companies_more%&gt;% filter(company%in%c(&quot;Neurobotics&quot;)==T) %&gt;% filter(location==&quot;moscow&quot;))
+                                
+ai_companies &lt;- ai_companies %&gt;% bind_rows.(ai_companies_more)%&gt;% distinct(company, location, country) %&gt;% as.data.frame()
+
+
+
+ggcharts::bar_chart(ai_companies_more, country, top_n = 30)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-8-1.png" width="672" /></p>
+<pre class="r"><code>#roads_cities &lt;- roads %&gt;% inner_join.(adresses_extracted)</code></pre>
+</div>
+</div>
+</div>
+<div id="further-datasets" class="section level1">
+<h1>Further datasets</h1>
+<p>I also collected two other datasets. Now we have to merge and deduplicate them.</p>
+<pre class="r"><code>ai_startups_europe &lt;- openxlsx::read.xlsx(&quot;/run/media/knut/HD/MLearningAlgoTests/ai_startups.xlsx&quot;, sheet = 1)
+
+ai_startups_world &lt;- openxlsx::read.xlsx(&quot;/run/media/knut/HD/MLearningAlgoTests/ai_startups.xlsx&quot;, sheet = 2)
+
+
+ai_startups_europe %&gt;% sample_n(10)</code></pre>
+<pre><code>##                  Name Logo                                 Website     Country
+## 1        Bodyguard.ai   NA             https://www.bodyguard.ai/fr      France
+## 2         Mobius Labs   NA             https://www.mobiuslabs.com/     Germany
+## 3          Truphysics   NA                  http://truphysics.com/     Germany
+## 4             Canotic   NA                     http://canotic.com/     Germany
+## 5           Deepsense   NA             http://www.thedeepsense.co/      France
+## 6            Keen Eye   NA https://www.keeneyetechnologies.com/en/      France
+## 7  Hallidai AI Gaming   NA                 http://hellofridai.com/     Germany
+## 8         Loop Robots   NA                 https://looprobots.com/ Netherlands
+## 9            Toposens   NA                    http://toposens.com/     Germany
+## 10            Pricefx   NA                 http://www.pricefx.com/     Germany
+##                         City Founding.Year   Enterprise.Intell.
+## 1                       Nice          2017 Computer Linguistics
+## 2                     Berlin          2018      Computer Vision
+## 3                  Stuttgart          2014                 &lt;NA&gt;
+## 4                     Berlin          2018                 &lt;NA&gt;
+## 5                      Paris          2018      Computer Vision
+## 6                      Paris          2015                 &lt;NA&gt;
+## 7                     Berlin          2018                 &lt;NA&gt;
+## 8                      Delft          2020                 &lt;NA&gt;
+## 9                     Munich          2015                 &lt;NA&gt;
+## 10 Pfaffenhofen An Der Glonn          2011            Discovery
+##    Enterprise.Func.                              Industry Technology.Type
+## 1              &lt;NA&gt;              Other Service Activities            &lt;NA&gt;
+## 2              &lt;NA&gt;                                  &lt;NA&gt;            &lt;NA&gt;
+## 3              &lt;NA&gt;                         Manufacturing            &lt;NA&gt;
+## 4              &lt;NA&gt;                                  &lt;NA&gt;    Applications
+## 5     IT &amp; Security                                  &lt;NA&gt;            &lt;NA&gt;
+## 6              &lt;NA&gt; Human Health &amp; Social Work Activities            &lt;NA&gt;
+## 7              &lt;NA&gt;      Arts, Entertainment &amp; Recreation            &lt;NA&gt;
+## 8              &lt;NA&gt; Human Health &amp; Social Work Activities            &lt;NA&gt;
+## 9              &lt;NA&gt;                                  &lt;NA&gt;  Infrastructure
+## 10            Sales                                  &lt;NA&gt;            &lt;NA&gt;</code></pre>
+<pre class="r"><code>ai_startups_world %&gt;% sample_n(10)</code></pre>
+<pre><code>##           Country                     State       City            Name
+## 1   United States             Massachusetts     Boston          Adhark
+## 2           Japan                      &lt;NA&gt;       &lt;NA&gt;          Kinpen
+## 3   United States                California  Sunnyvale ThroughPut Inc.
+## 4   United States                  New York   New York       Pymetrics
+## 5          Israel                      &lt;NA&gt;   Tel Aviv      PhraseTech
+## 6           Japan                      &lt;NA&gt;    Fukuoka     Next-System
+## 7          Israel                      &lt;NA&gt;       &lt;NA&gt;      K.Y.C Int.
+## 8          Canada Newfoundland and Labrador St. John&#39;s     Afinin Labs
+## 9  United Kingdom                   England     London         Behavox
+## 10          China                      &lt;NA&gt;   Shenzhen          Prafly
+##         Category.-.Final
+## 1        Computer Vision
+## 2                 Travel
+## 3  Business Intelligence
+## 4        Human Resources
+## 5        Sales/Marketing
+## 6   Software Development
+## 7       Defense/Security
+## 8                Core AI
+## 9  Business Intelligence
+## 10         Communication
+##                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            Description
+## 1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     Adhark is an image performance software company.
+## 2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 &lt;NA&gt;
+## 3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      Data Consultant Automation that helps supply chains run leaner.
+## 4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    Pymetrics is the next generation job marketplace.
+## 5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 &lt;NA&gt;
+## 6                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        cutting-edge technology and utilizing the content, Provide the best service to society, the future society is rich in comfort and convenience for everyone and creating a corporate mission .
+## 7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 &lt;NA&gt;
+## 8  Afinin Labs has a proprietary machine learning system that identifies and adapts to trends in the financial markets.   The system generates buy/sell signals for targeted equities when it determines there is an opportunity for profit.  Pioneered by experts in the field of machine learning and applied financial analysis, Afinin provides a trading algorithm unlike anything available in the marketplace.  Backed by years of research excellence, the algorithm delivers a trading signal with a high level of prediction accuracy to the execution systems of hedge funds.  Hedge funds realize an exceptional rate of return for investors by leveraging the algorithm for the management of a portion of their funds under management.
+## 9                                                                                                                                                                                                                                                                                                                                                                                                                                                             Behavox is an enterprise compliance software company which provides holistic employee surveillance solutions. The company&#39;s solutions allow Senior Management, Risk &amp; Compliance Officers to detect cases of market abuse, insider threat, collusion and reckless behavior in real time.
+## 10                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                &lt;NA&gt;
+##                                      Website
+## 1                     http://www.adhark.com/
+## 2                    https://info.kinpen.me/
+## 3                   https://throughput.world
+## 4                  https://www.pymetrics.com
+## 5                 https://www.phrasetech.com
+## 6  http://www.next-system.com/eng/index.html
+## 7                https://www.kycint.com/home
+## 8                      http://www.afinin.com
+## 9                     http://www.behavox.com
+## 10                    http://www.prafly.com/</code></pre>
+<p>I use the reclin package for record linkage deduplication based on string edit distance (jaccard). For the first two datasets, there are only a few duplicates.</p>
+<pre class="r"><code>world_s &lt;- ai_startups_world %&gt;% select(company=Name, country=Country, location=City)%&gt;% mutate(location=tolower(location))
+
+europe &lt;- ai_startups_europe %&gt;% select(company=Name, country=Country, location=City)%&gt;% mutate(location=tolower(location))
+
+p &lt;- pair_blocking(world_s, europe, large = FALSE)
+p &lt;- compare_pairs(p, by = c(&quot;company&quot;, &quot;location&quot;, &quot;country&quot;))
+p &lt;- compare_pairs(p, by = c(&quot;company&quot;, &quot;location&quot;, &quot;country&quot;),
+  default_comparator = jaccard(0.9), overwrite = TRUE)
+p &lt;- score_simsum(p, var = &quot;simsum&quot;)
+m &lt;- problink_em(p)</code></pre>
+<pre><code>## Warning: `group_by_()` was deprecated in dplyr 0.7.0.
+## Please use `group_by()` instead.
+## See vignette(&#39;programming&#39;) for more help
+## This warning is displayed once every 8 hours.
+## Call `lifecycle::last_lifecycle_warnings()` to see where this warning was generated.</code></pre>
+<pre class="r"><code>p &lt;- score_problink(p, model = m, var = &quot;weight&quot;)
+p &lt;- select_threshold(p, &quot;weight&quot;, var = &quot;threshold&quot;, threshold = 18.94455)
+p &lt;- add_from_x(p, id_x = &quot;id&quot;)
+
+linked_data_set &lt;- link(p) %&gt;% na.omit()
+
+linked_data_set</code></pre>
+<pre><code>##              company.x   country.x location.x              company.y
+## 1    Vyer Technologies      Sweden  stockholm LINKAI Technologies AB
+## 2            SoftRobot      Sweden    uppsala    SoftRobot Sweden AB
+## 3     Aiir Innovations Netherlands  amsterdam       Aiir Innovations
+## 4              Storyzy      France      paris                Storyzy
+## 5              Lili.ai      France      paris                Lili.ai
+## 6              LightOn      France      paris                LightOn
+## 7   Scibids Technology      France      paris        Kili Technology
+## 8     Shift Technology      France      paris        Kili Technology
+## 9             Calldesk      France      paris               calldesk
+## 10   Walnut Algorithms      France      paris      Walnut Algorithms
+## 11           Heuritech      France      paris              Heuritech
+## 12  Scibids Technology      France      paris     Scibids Technology
+## 13    Shift Technology      France      paris     Scibids Technology
+## 14            Doctrine      France      paris               Doctrine
+## 15             Beyable      France      paris                Beyable
+## 16  Scibids Technology      France      paris       Shift Technology
+## 17    Shift Technology      France      paris       Shift Technology
+## 18              Wiidii      France   bordeaux                 Wiidii
+## 19            EasyMile      France   toulouse               Easymile
+## 20          Deepomatic      France      paris             Deepomatic
+## 21            Craft AI      France      paris               Craft.AI
+## 22          Sensewaves      France      paris             Sensewaves
+## 23            Clustaar      France      paris               Clustaar
+## 24          DreamQuark      France      paris             DreamQuark
+## 25              Ubiant      France       lyon                 Ubiant
+## 26             Kayrros      France      paris                Kayrros
+## 27              SESAMm      France       metz                 SESAMm
+## 28            Qynapse       France      paris                Qynapse
+## 29               Karos      France      paris                  Karos
+## 30            Invenis       France      paris                Invenis
+## 31              Happyr      Sweden  stockholm              Happyr AB
+## 32              Unibap      Sweden    uppsala              Unibap AB
+## 33              Unibap      Sweden    uppsala              Unibap AB
+## 34        Greater Than      Sweden  stockholm           Greater Than
+## 35             Gleechi      Sweden  stockholm             Gleechi AB
+## 36            Univrses      Sweden  stockholm            Univrses AB
+## 37            Lexplore      Sweden  stockholm               Lexplore
+## 38            Imagimob      Sweden  stockholm            Imagimob AB
+## 39               Aaron     Germany     berlin                  Aaron
+## 40                 Ada     Germany     berlin                    Ada
+## 41           parlamind     Germany     berlin              Parlamind
+## 42          Risk Ident     Germany    hamburg             Risk Ident
+## 43                Rasa     Germany     berlin                   Rasa
+## 44               Bunch     Germany     berlin                  Bunch
+## 45           Fraugster     Germany     berlin              Fraugster
+## 46          Inspirient     Germany     berlin             Inspirient
+## 47              Mapegy     Germany     berlin                 Mapegy
+## 48             Lateral     Germany     berlin                Lateral
+## 49             Lateral     Germany     berlin               Realrate
+## 50           Cargonexx     Germany    hamburg              Cargonexx
+## 51            TwentyBN     Germany     berlin               Twentybn
+## 52     German Autolabs     Germany     berlin        German Autolabs
+## 53               Xbird     Germany     berlin                  Xbird
+## 54             picsure     Germany     munich                Picsure
+## 55             Picsure     Germany     munich                Picsure
+## 56 micropsi industries     Germany     berlin    Micropsi Industries
+## 57 Micropsi Industries     Germany     berlin    Micropsi Industries
+## 58            Contiamo     Germany     berlin               Contiamo
+## 59        Explosion AI     Germany     berlin              Explosion
+## 60           SearchInk     Germany     berlin              SiaSearch
+##      country.y location.y
+## 1       Sweden  stockholm
+## 2       Sweden    uppsala
+## 3  Netherlands  amsterdam
+## 4       France      paris
+## 5       France      paris
+## 6       France      paris
+## 7       France      paris
+## 8       France      paris
+## 9       France      paris
+## 10      France      paris
+## 11      France      paris
+## 12      France      paris
+## 13      France      paris
+## 14      France      paris
+## 15      France      paris
+## 16      France      paris
+## 17      France      paris
+## 18      France   bordeaux
+## 19      France   toulouse
+## 20      France      paris
+## 21      France      paris
+## 22      France      paris
+## 23      France      paris
+## 24      France      paris
+## 25      France       lyon
+## 26      France      paris
+## 27      France       metz
+## 28      France      paris
+## 29      France      paris
+## 30      France      paris
+## 31      Sweden  stockholm
+## 32      Sweden    uppsala
+## 33      Sweden    uppsala
+## 34      Sweden  stockholm
+## 35      Sweden  stockholm
+## 36      Sweden  stockholm
+## 37      Sweden  stockholm
+## 38      Sweden  stockholm
+## 39     Germany     berlin
+## 40     Germany     berlin
+## 41     Germany     berlin
+## 42     Germany    hamburg
+## 43     Germany     berlin
+## 44     Germany     berlin
+## 45     Germany     berlin
+## 46     Germany     berlin
+## 47     Germany     berlin
+## 48     Germany     berlin
+## 49     Germany     berlin
+## 50     Germany    hamburg
+## 51     Germany     berlin
+## 52     Germany     berlin
+## 53     Germany     berlin
+## 54     Germany     munich
+## 55     Germany     munich
+## 56     Germany     berlin
+## 57     Germany     berlin
+## 58     Germany     berlin
+## 59     Germany     berlin
+## 60     Germany     berlin</code></pre>
+<p>There were some duplicates in the scraped dataset. Getting rid of them here.</p>
+<pre class="r"><code>both &lt;- world_s %&gt;% bind_rows.(europe %&gt;% filter(company%in%linked_data_set$company.y==F)) %&gt;% distinct.() %&gt;% na.omit()
+
+
+p &lt;- pair_blocking(ai_companies, ai_companies, large = FALSE)
+p &lt;- compare_pairs(p, by = c(&quot;company&quot;, &quot;location&quot;, &quot;country&quot;))
+p &lt;- compare_pairs(p, by = c(&quot;company&quot;, &quot;location&quot;, &quot;country&quot;),
+  default_comparator = jaccard(0.9), overwrite = TRUE)
+p &lt;- score_simsum(p, var = &quot;simsum&quot;)
+m &lt;- problink_em(p)
+p &lt;- score_problink(p, model = m, var = &quot;weight&quot;)
+p &lt;- select_threshold(p, &quot;weight&quot;, var = &quot;threshold&quot;, threshold = 10.95548)
+p &lt;- add_from_x(p, id_x = &quot;id&quot;)
+p &lt;- p %&gt;% filter(weight&lt;16.40807)
+linked_data_set &lt;- link(p) %&gt;% na.omit()
+
+linked_data_set</code></pre>
+<pre><code>## [1] company.x  location.x country.x  company.y  location.y country.y 
+## &lt;0 rows&gt; (or 0-length row.names)</code></pre>
+<p>These are mostly literal matches.</p>
+<pre class="r"><code>ai_companies &lt;- ai_companies%&gt;% filter(company%in%linked_data_set$company.y==F) 
+
+
+p &lt;- pair_blocking(ai_companies, both, large = FALSE)
+p &lt;- compare_pairs(p, by = c(&quot;company&quot;, &quot;location&quot;, &quot;country&quot;))
+p &lt;- compare_pairs(p, by = c(&quot;company&quot;, &quot;location&quot;, &quot;country&quot;),
+  default_comparator = jaccard(0.9), overwrite = TRUE)
+p &lt;- score_simsum(p, var = &quot;simsum&quot;)
+m &lt;- problink_em(p)
+p &lt;- score_problink(p, model = m, var = &quot;weight&quot;)
+p &lt;- select_threshold(p, &quot;weight&quot;, var = &quot;threshold&quot;, threshold = 9.959988)
+p &lt;- add_from_x(p, id_x = &quot;id&quot;)
+p &lt;- p %&gt;% filter(weight&lt;16.40807)
+linked_data_set &lt;- link(p) %&gt;% na.omit()
+
+linked_data_set</code></pre>
+<pre><code>##                                company.x location.x     country.x
+## 1             ‌Alitheia Technologies Inc.    toronto        Canada
+## 2                    Augmented Knowledge    incheon  Korea, South
+## 3                            Cochlear.ai      seoul  Korea, South
+## 4                           Dream Youngs      seoul  Korea, South
+## 5  ‌Driva - AI Dash Cam Driving Assistant   shanghai         China
+## 6    ‌Elektronik Virtual Asisten (EVA.id)    bandung     Indonesia
+## 7                                 GoodAI     prague       Czechia
+## 8               ‌Granata Decision Systems    toronto        Canada
+## 9          ‌Internuncio Technologies Inc.  vancouver        Canada
+## 10                          MeasureChina      seoul  Korea, South
+## 11            ‌Moran Cognitive Technology    beijing         China
+## 12                               Omnious      seoul  Korea, South
+## 13         ‌Qualaris Healthcare Solutions pittsburgh United States
+## 14                                 Riiid      seoul  Korea, South
+## 15         ‌SC5 (part of Nordcloud Group)   helsinki       Finland
+## 16                           Visual Camp      seoul  Korea, South
+##                                company.y      country.y location.y
+## 1             Alitheia Technologies Inc.         Canada    toronto
+## 2                    Augmented Knowledge    South Korea    incheon
+## 3                            Cochlear.ai    South Korea      seoul
+## 4                           Dream Youngs    South Korea      seoul
+## 5  Driva - AI Dash Cam Driving Assistant          China   shanghai
+## 6    Elektronik Virtual Asisten (EVA.id)      Indonesia    bandung
+## 7                                 GoodAI Czech Republic     prague
+## 8               Granata Decision Systems         Canada    toronto
+## 9          Internuncio Technologies Inc.         Canada  vancouver
+## 10                          MeasureChina    South Korea      seoul
+## 11            Moran Cognitive Technology          China    beijing
+## 12                               Omnious    South Korea      seoul
+## 13         Qualaris Healthcare Solutions  United States pittsburgh
+## 14                                 Riiid    South Korea      seoul
+## 15         SC5 (part of Nordcloud Group)        Finland   helsinki
+## 16                           Visual Camp    South Korea      seoul</code></pre>
+<p>Unsurprisingly, this dataset will have some bias, but it should work fine to show AI hubs. Below how many companies come from the top 30 countries. The dataset contains more than 7k AI companies.</p>
+<pre class="r"><code>ai_companies_all &lt;- ai_companies %&gt;% bind_rows.(both %&gt;% filter(company%in%linked_data_set$company.y==F)) %&gt;% distinct.()
+
+
+ggcharts::bar_chart(ai_companies_all, country, top_n = 30)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-14-1.png" width="672" /></p>
+</div>
+<div id="ai-hubs-around-the-world" class="section level1">
+<h1>AI hubs around the world</h1>
+<pre class="r"><code>ai_companies_per_city &lt;- ai_companies_all %&gt;% group_by(location, country) %&gt;% count(sort = T)%&gt;% rename(`Companies in City`=n) %&gt;% mutate(country=str_replace(country, &quot;United States&quot;, &quot;USA&quot;), large=ifelse(`Companies in City`&gt;9, location, NA)) 
+
+
+ai_companies_per_country &lt;- ai_companies_all %&gt;% group_by(country) %&gt;% count(sort = T) %&gt;% rename(`Companies in Country`=n)
+
+
+
+World3 &lt;- left_join(World, ai_companies_per_country %&gt;% rename(name=country)) %&gt;% ungroup()</code></pre>
+<pre><code>## Joining, by = &quot;name&quot;</code></pre>
+<pre class="r"><code>World3 &lt;- st_sf(World3)
+
+ai_cities &lt;- world.cities %&gt;% mutate(location=tolower(name)) %&gt;% inner_join.(ai_companies_per_city, by=c(&quot;location&quot;=&quot;location&quot;, &quot;country.etc&quot;=&quot;country&quot;)) %&gt;% filter(location!=&quot;mobile&quot;)
+
+
+cities &lt;- ai_cities %&gt;%
+  st_as_sf(coords = c(&quot;long&quot;, &quot;lat&quot;), crs = 4326) %&gt;%
+  st_cast(&quot;POINT&quot;)
+
+tmap_mode(&quot;plot&quot;)</code></pre>
+<pre><code>## tmap mode set to plotting</code></pre>
+<pre class="r"><code>ai_hubs &lt;- tm_shape(World3) +
+  tm_polygons(col = &quot;Companies in Country&quot;, style = &quot;fisher&quot;, palette = &quot;-RdGy&quot;, n=10) +
+  tm_layout(legend.outside = F) + tm_shape(cities)+tm_bubbles(size = &quot;Companies in City&quot;, col = &quot;Companies in City&quot;, palette=&quot;Blues&quot;)  + tmap::tm_style(&quot;grey&quot;)+ tm_text(&quot;large&quot;, size = &quot;Companies in City&quot;)
+
+
+
+ai_hubs</code></pre>
+<pre><code>## Note that tm_style(&quot;grey&quot;) resets all options set with tm_layout, tm_view, tm_format, or tm_legend. It is therefore recommended to place the tm_style element prior to the other tm_layout/tm_view/tm_format/tm_legend elements.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-15-1.png" width="672" /></p>
+<pre class="r"><code>library(sf)
+north_america &lt;- st_bbox(cities %&gt;% filter(country.etc %in% c(&quot;USA&quot;, &quot;Canada&quot;, &quot;Mexico&quot;)))
+
+
+tm_shape(World3, bbox = north_america) +
+  tm_polygons(col = &quot;Companies in Country&quot;, style = &quot;fisher&quot;, palette = &quot;-RdGy&quot;, n=10) +
+  tm_layout(legend.outside = F) + tm_shape(cities)+tm_bubbles(size = &quot;Companies in City&quot;, col = &quot;Companies in City&quot;, palette=&quot;Blues&quot;)  + tmap::tm_style(&quot;grey&quot;)+ tm_text(&quot;large&quot;, size = 0.5)+ tm_legend(show=FALSE)</code></pre>
+<pre><code>## Note that tm_style(&quot;grey&quot;) resets all options set with tm_layout, tm_view, tm_format, or tm_legend. It is therefore recommended to place the tm_style element prior to the other tm_layout/tm_view/tm_format/tm_legend elements.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-16-1.png" width="672" /></p>
+<div id="hubs-hubs-almost-everywhere" class="section level2">
+<h2>Hubs, hubs almost everywhere</h2>
+<pre class="r"><code>europe &lt;- st_bbox(cities %&gt;% filter(country.etc %in% c(&quot;Spain&quot;, &quot;Finland&quot;, &quot;Turkey&quot;, &quot;Ireland&quot;)))
+
+
+tm_shape(World3, bbox = europe) +
+  tm_polygons(col = &quot;Companies in Country&quot;, style = &quot;fisher&quot;, palette = &quot;-RdGy&quot;) +
+  tm_layout(legend.show = F) + tm_shape(cities)+tm_bubbles(size = &quot;Companies in City&quot;, col = &quot;Companies in City&quot;, palette=&quot;Blues&quot;)  + tmap::tm_style(&quot;grey&quot;)+ tm_text(&quot;large&quot;, size = 0.5)+ tm_legend(show=FALSE)</code></pre>
+<pre><code>## Note that tm_style(&quot;grey&quot;) resets all options set with tm_layout, tm_view, tm_format, or tm_legend. It is therefore recommended to place the tm_style element prior to the other tm_layout/tm_view/tm_format/tm_legend elements.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-17-1.png" width="672" /></p>
+<pre class="r"><code>east_asia &lt;- st_bbox(cities %&gt;% filter(country.etc %in% c(&quot;China&quot;, &quot;Japan&quot;)))
+
+
+tm_shape(World3, bbox = east_asia) +
+  tm_polygons(col = &quot;Companies in Country&quot;, style = &quot;fisher&quot;, palette = &quot;-RdGy&quot;) +
+  tm_layout(legend.show = F) + tm_shape(cities)+tm_bubbles(size = &quot;Companies in City&quot;, col = &quot;Companies in City&quot;, palette=&quot;Blues&quot;)  + tmap::tm_style(&quot;grey&quot;)+ tm_text(&quot;large&quot;, size = 0.8)+ tm_legend(show=FALSE)</code></pre>
+<pre><code>## Note that tm_style(&quot;grey&quot;) resets all options set with tm_layout, tm_view, tm_format, or tm_legend. It is therefore recommended to place the tm_style element prior to the other tm_layout/tm_view/tm_format/tm_legend elements.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-18-1.png" width="672" /></p>
+<pre class="r"><code>india &lt;- st_bbox(cities %&gt;% filter(country.etc %in% c(&quot;India&quot;)))
+
+
+tm_shape(World3, bbox = india) +
+  tm_polygons(col = &quot;Companies in Country&quot;, style = &quot;fisher&quot;, palette = &quot;-RdGy&quot;) +
+  tm_layout(legend.show = F) + tm_shape(cities)+tm_bubbles(size = &quot;Companies in City&quot;, col = &quot;Companies in City&quot;, palette=&quot;Blues&quot;)  + tmap::tm_style(&quot;grey&quot;)+ tm_text(&quot;large&quot;, size = 0.8)+ tm_legend(show=FALSE)</code></pre>
+<pre><code>## Note that tm_style(&quot;grey&quot;) resets all options set with tm_layout, tm_view, tm_format, or tm_legend. It is therefore recommended to place the tm_style element prior to the other tm_layout/tm_view/tm_format/tm_legend elements.</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-19-1.png" width="672" /></p>
+<p>And the table itself.</p>
+<pre class="r"><code>ai_companies_all</code></pre>
+<pre><code>## # A tidytable: 7,357 × 3
+##    company                 location  country  
+##    &lt;chr&gt;                   &lt;chr&gt;     &lt;chr&gt;    
+##  1 Hong Jing Drive         hangzhou  China    
+##  2 Gritworld               shanghai  China    
+##  3 Anruan Keji             shenzhen  China    
+##  4 Jiangsu Fant Technology hong kong Hong Kong
+##  5 Hebin Intelligence      hefei     China    
+##  6 Lvzhou Technology       hefei     China    
+##  7 Fantai AI               shanghai  China    
+##  8 ccvui.com               hangzhou  China    
+##  9 Intengine Technology    beijing   China    
+## 10 ‌CAIWA Service           tokyo     Japan    
+## # … with 7,347 more rows</code></pre>
+<p>Could be more could be less ;)</p>
+<style type="text/css">
+
+@import url(https://fonts.googleapis.com/css?family=Open+Sans:wght@300);
+
+body{ /* Normal  */
+      font-size: 16px;
+      font-family: "Open Sans";
+  }
+
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 20px;
+  color: #324c63;
+}
+h1 { /* Header 1 */
+  font-size: 30px;
+  font-family: "Roboto";
+}
+h2 { /* Header 2 */
+    font-size: 26px;
+    font-family: "Roboto";
+}
+h3 { /* Header 3 */
+  font-size: 22px;
+  font-family: "Roboto";
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+    color: white;
+    background-color: black;
+}
+
+p { /* Code block - determines code spacing between lines */
+    font-size: 18px;
+    font-family: "Open Sans";
+    margin: 0px 0px 30px;
+    padding: 10px;
+    line-height: 200%;
+}
+</style>
+</div>
+</div>
