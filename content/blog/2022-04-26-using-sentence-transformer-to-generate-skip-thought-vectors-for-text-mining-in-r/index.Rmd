@@ -213,6 +213,34 @@ st <- import("sentence_transformers")
 model <- st$SentenceTransformer('all-distilroberta-v1')
 embeddings = model$encode(s)
 
+library(genieclust)
+
+x <- embeddings
+
+h <- gclust(x)
+
+y_pred11 <- cutree(h, k=40)
+y_pred12 <- cutree(h, k=60)
+y_pred13 <- cutree(h, k=100)
+
+y_pred3 <- cutree(h, h = 0.018)
+y_pred4 <- cutree(h, h = 0.023)
+y_pred5 <- cutree(h, h = 0.025)
+
+
+y_pred <- cutree(h, k=300)
+y_pred2 <- cutree(h, k=3000)
+
+ginie_df <- data.table(h4=y_pred11, 
+                       h7=y_pred12, 
+                       h34=y_pred13, 
+                       h84=y_pred5, 
+                       h181=y_pred4, 
+                       h300=y_pred, 
+                       h552=y_pred3, 
+                       h3000=y_pred2)
+
+
 ```
 
 

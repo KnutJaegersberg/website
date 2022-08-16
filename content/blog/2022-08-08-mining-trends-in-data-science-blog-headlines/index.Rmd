@@ -469,3 +469,59 @@ Gotta bounce.
 ![ss](flakcanon.jpg)
 
 
+
+
+
+
+
+
+
+<style type="text/css">
+
+@import url(https://fonts.googleapis.com/css?family=Open+Sans:wght@300);
+
+body{ /* Normal  */
+      font-size: 16px;
+      font-family: "Open Sans";
+  }
+
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 20px;
+  color: #324c63;
+}
+h1 { /* Header 1 */
+  font-size: 30px;
+  font-family: "Roboto";
+}
+h2 { /* Header 2 */
+    font-size: 26px;
+    font-family: "Roboto";
+}
+h3 { /* Header 3 */
+  font-size: 22px;
+  font-family: "Roboto";
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+    color: white;
+    background-color: black;
+}
+
+p { /* Code block - determines code spacing between lines */
+    font-size: 18px;
+    font-family: "Open Sans";
+    margin: 0px 0px 30px;
+    padding: 10px;
+    line-height: 200%;
+}
+</style>
+
+
+
+
