@@ -15,8 +15,14 @@ We'll look at how to mine blog posts for learning about influence vectors of the
 Whilst we can do this across pretrained models from different domains to move around points of interest (i.e. warp Venus to the edge of Andromeda's black hole and an earth alike planet to its place), there is more syntropy in defaulting to the language model in our head. 
    
 
+```{r setup, include=FALSE, warning=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
 
-![s](https://www.youtube.com/watch?v=q5JJGX-Wppk)  
+
+```{r, eval=TRUE}
+blogdown::shortcode("youtube", "q5JJGX-Wppk")
+```
 
 
 

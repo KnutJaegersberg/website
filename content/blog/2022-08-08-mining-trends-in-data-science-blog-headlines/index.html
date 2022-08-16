@@ -18,10 +18,8 @@ tags: []
 <h1>Mining Trends in Data Science Blog Headlines - Spawn Selectors</h1>
 <p>We’ll look at how to mine blog posts for learning about influence vectors of the data science bubble. A workflow for labeling text data in an ML supported way. It is based on the same process used for writing dictionaries in dictionary based labeling approaches and is utilizes semantic folding. Semantic folding is the utilization of self-supervised learning and massive pretrained models to journey through semantic space at superlogical velocity. We use model-intersubjectivity as gravity drive. Centering content around model core concepts which are related to one another but are from different perspectives yields semantic singularity: One models worldview is the dialectics of anothers ignorance. These intersubjective wormholes, a form of analogical reasoning, allow us to reason faster than possible by the rules of formal logic, in the realms of overlooked validity.<br />
 Whilst we can do this across pretrained models from different domains to move around points of interest (i.e. warp Venus to the edge of Andromeda’s black hole and an earth alike planet to its place), there is more syntropy in defaulting to the language model in our head.</p>
-<div class="figure">
-<img src="https://www.youtube.com/watch?v=q5JJGX-Wppk" alt="" />
-<p class="caption">s</p>
-</div>
+<pre class="r"><code>blogdown::shortcode(&quot;youtube&quot;, &quot;q5JJGX-Wppk&quot;)</code></pre>
+<p>{{% youtube "q5JJGX-Wppk" %}}</p>
 </div>
 <div id="extracting-a-selector-graph-for-data-science-blog-post-titles" class="section level1">
 <h1>Extracting a selector graph for data science blog post titles</h1>
@@ -174,638 +172,31 @@ pos_tags_keybert &lt;- fst::read_fst(&quot;/home/knut/Desktop/keybert_pos_tags.f
 
 keybert_counts %&gt;% ungroup() %&gt;% sample_n(100)</code></pre>
 <pre><code>## # A tibble: 100 × 2
-##    keyword                              n
-##    &lt;chr&gt;                            &lt;int&gt;
-##  1 power intelligent results            1
-##  2 sequencing data analysis             1
-##  3 combining multiple models            1
-##  4 design game levels                   1
-##  5 predicting poetic movements          1
-##  6 know gradient boosting               2
-##  7 automatic identification parquet     1
-##  8 observe                              1
-##  9 data scientist title                 1
-## 10 amazon emr cluster                   1
+##    keyword                          n
+##    &lt;chr&gt;                        &lt;int&gt;
+##  1 run schedule python              1
+##  2 overcoming imposter syndrome     1
+##  3 robust decision making           1
+##  4 matches pymc3                    1
+##  5 sentiment reddit subgroup        1
+##  6 google search packages           1
+##  7 python altair combines           1
+##  8 image processing hackathon       1
+##  9 interview ai                     1
+## 10 shopping                         1
 ## # … with 90 more rows</code></pre>
 <p>Next we want to make them comparable with word embeddings. Some of these phrases are pieces of sentences, yet, I’m first interested in words and keywords, because those yield a general and easiest to grasp grid to traverse.<br />
 Thus, I choose non-contextual word embeddings for this task. I will use TransE embeddings trained on the CommonSense Knowledge Graph (CSKG, see <a href="https://github.com/usc-isi-i2/cskg" class="uri">https://github.com/usc-isi-i2/cskg</a>) to initialize doc2vec on both titles and blog posts themselves for quick hack to a complete, general grid of words with domain idiosyncrasies.</p>
 <pre class="r"><code>#prepare the embeddings 
 
-CSKG_labels &lt;- fread(&quot;/home/knut/nlpaug/cskg.tsv&quot;) %&gt;% select(`node1;label`, node1, `node2;label`, node2)</code></pre>
-<pre><code>## Warning in fread(&quot;/home/knut/nlpaug/cskg.tsv&quot;): Found and resolved improper
-## quoting out-of-sample. First healed line 32747: &lt;&lt;/c/en/ace/n/wn/person-
-## mw:MayHaveProperty-/c/en/frame/n/wn/communication-0000 /c/en/ace/n/wn/person
-## mw:MayHaveProperty /c/en/frame/n/wn/communication &quot;wizard of oz&quot; print framed
-## may have property VG &gt;&gt;. If the fields are not quoted (e.g. field separator does
-## not appear within any field), try quote=&quot;&quot; to avoid this warning.</code></pre>
-<pre class="r"><code>CSKG_labels &lt;- CSKG_labels %&gt;% distinct(`node1;label`, node1) %&gt;%
+CSKG_labels &lt;- fread(&quot;/home/knut/nlpaug/cskg.tsv&quot;) %&gt;% select(`node1;label`, node1, `node2;label`, node2)
+CSKG_labels &lt;- CSKG_labels %&gt;% distinct(`node1;label`, node1) %&gt;%
   rename(label=`node1;label`, node=node1) %&gt;% 
   bind_rows.(CSKG_labels %&gt;% distinct(`node2;label`, node2)%&gt;%
                rename(label=`node2;label`, node=node2)) %&gt;% distinct.()
 
-labels &lt;- splitstackshape::cSplit(CSKG_labels, &quot;label&quot;, &quot;|&quot;)</code></pre>
-<pre><code>## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE</code></pre>
-<pre><code>## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE
-
-## Warning in type.convert.default(X[[i]], ...): &#39;as.is&#39; should be specified by the
-## caller; using TRUE</code></pre>
-<pre class="r"><code>labels &lt;- labels %&gt;% melt(id.vars=&quot;node&quot;, na.rm = T)
+labels &lt;- splitstackshape::cSplit(CSKG_labels, &quot;label&quot;, &quot;|&quot;)
+labels &lt;- labels %&gt;% melt(id.vars=&quot;node&quot;, na.rm = T)
 
 
 CSKG_embs &lt;- fread(&quot;/home/knut/nlpaug/embs/trans_log_dot_0.1.tsv&quot;) %&gt;% inner_join.(labels %&gt;% rename(V1=node, label=value) %&gt;% select(-variable))
@@ -839,10 +230,8 @@ x$text   &lt;- gsub(&quot;[^[:alpha:]]&quot;, &quot; &quot;, x$text)
 x$text   &lt;- gsub(&quot;[[:space:]]+&quot;, &quot; &quot;, x$text)
 x$text   &lt;- str_squish(x$text)
 x$nwords &lt;- txt_count_words(x$text)
-x$text &lt;- stringr::word(x$text, start = 1, end = ifelse(x$nwords&lt;1000, x$nwords, 999)) </code></pre>
-<pre><code>## Warning in stri_sub(string, from = start, to = end): argument is not an atomic
-## vector; coercing</code></pre>
-<pre class="r"><code>x &lt;- na.omit(x)
+x$text &lt;- stringr::word(x$text, start = 1, end = ifelse(x$nwords&lt;1000, x$nwords, 999)) 
+x &lt;- na.omit(x)
 
 
 xs &lt;- subset(x, nwords &gt; 1 &amp; nchar(text) &gt; 0)
@@ -981,9 +370,9 @@ d &lt;- fst::read_fst(&quot;/home/knut/Desktop/doc2vectraindata.fst&quot;)
 
 #rm(text_df_bigrams, ngrams, text_df_trigrams, toks_ngram, text_df_trigrams2, text_df_bigrams2)
 gc()</code></pre>
-<pre><code>##             used (Mb) gc trigger    (Mb)   max used    (Mb)
-## Ncells  32187434 1719   87174095  4655.6   77077887  4116.5
-## Vcells 737926375 5630 1812527760 13828.5 2265435782 17284.0</code></pre>
+<pre><code>##             used   (Mb) gc trigger    (Mb)   max used    (Mb)
+## Ncells  32188089 1719.1   87129625  4653.3   77078522  4116.5
+## Vcells 737929762 5630.0 1812531024 13828.6 2265438778 17284.0</code></pre>
 <pre class="r"><code>CSKG_embs2 &lt;- CSKG_embs %&gt;% as.matrix()
 rownames(CSKG_embs2) &lt;- rownames(CSKG_embs)
 
@@ -1001,20 +390,20 @@ targets &lt;- doc2vec_CSKG_words[words$id,]
 examples &lt;- paragraph2vec_similarity(targets, doc2vec_CSKG_words, top_n = 5) %&gt;% filter.(similarity&gt;0.7) %&gt;% filter.(term1!=term2)
 
 examples</code></pre>
-<pre><code>## # A tidytable: 163 × 4
-##    term1                       term2                     similarity  rank
-##    &lt;chr&gt;                       &lt;chr&gt;                          &lt;dbl&gt; &lt;dbl&gt;
-##  1 well_python                 python_well                    0.944     2
-##  2 visualizations_using_python rostami                        0.703     2
-##  3 using_python_selenium       scraping_using_python          0.716     2
-##  4 using_python_machine        calidad                        0.817     2
-##  5 using_python_machine        dotson                         0.807     3
-##  6 using_python_machine        stoeckl                        0.802     4
-##  7 using_python_machine        anisdismail                    0.802     5
-##  8 tips_python                 python_tips                    0.963     2
-##  9 tips_python                 simple_tips                    0.780     3
-## 10 tips_python                 data_science_introduction      0.724     4
-## # … with 153 more rows</code></pre>
+<pre><code>## # A tidytable: 171 × 4
+##    term1                 term2                  similarity  rank
+##    &lt;chr&gt;                 &lt;chr&gt;                       &lt;dbl&gt; &lt;dbl&gt;
+##  1 well_python           python_well                 0.946     2
+##  2 well_python           know_python                 0.719     3
+##  3 using_python_selenium scraping_using_python       0.731     2
+##  4 using_python_machine  anisdismail                 0.820     2
+##  5 using_python_machine  gsitechnology               0.814     3
+##  6 using_python_machine  dotson                      0.812     4
+##  7 using_python_machine  c_o_d                       0.811     5
+##  8 tips_python           python_tips                 0.968     2
+##  9 tips_python           simple_tips                 0.781     3
+## 10 tips_python           ipython_magic_commands      0.742     4
+## # … with 161 more rows</code></pre>
 <p>Check out this graph plot here with similar terms for the word Python:</p>
 <pre class="r"><code>node_labels &lt;- c(examples$term1, examples$term2) %&gt;% unique()
 
@@ -1049,23 +438,19 @@ edges &lt;- data.frame(from = relations_filtered_ids$id,
                     to = relations_filtered_ids2$id, label=&quot;similarity&quot;)
 
 
-library(tidygraph)</code></pre>
-<pre><code>## 
-## Attaching package: &#39;tidygraph&#39;</code></pre>
-<pre><code>## The following object is masked from &#39;package:stats&#39;:
-## 
-##     filter</code></pre>
-<pre class="r"><code>g &lt;- tbl_graph(nodes = nodes, edges = edges, directed = FALSE)
+library(tidygraph)
+
+g &lt;- tbl_graph(nodes = nodes, edges = edges, directed = FALSE)
 
 g &lt;- g %&gt;% 
   activate(nodes) %&gt;% 
   mutate(degree = centrality_degree(), betweenness = centrality_betweenness()) %&gt;% 
   activate(edges) %&gt;% 
   mutate(betweenness = centrality_edge_betweenness()) %&gt;% 
-  arrange(betweenness)</code></pre>
-<pre><code>## Warning in betweenness(graph = graph, v = V(graph), directed = directed, :
-## &#39;nobigint&#39; is deprecated since igraph 1.3 and will be removed in igraph 1.4</code></pre>
-<pre class="r"><code>nodes2 &lt;- activate(g, nodes) %&gt;% as_tibble() %&gt;% mutate(value=degree*betweenness)
+  arrange(betweenness)
+
+
+nodes2 &lt;- activate(g, nodes) %&gt;% as_tibble() %&gt;% mutate(value=degree*betweenness)
 
 
 
@@ -1076,7 +461,7 @@ library(visNetwork)
 visNetwork(nodes2, edges) %&gt;% 
    visOptions(highlightNearest = list(enabled = T, hover = F))</code></pre>
 <div id="htmlwidget-1" style="width:672px;height:480px;" class="visNetwork html-widget"></div>
-<script type="application/json" data-for="htmlwidget-1">{"x":{"nodes":{"id":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173],"label":["well_python","visualizations_using_python","using_python_selenium","using_python_machine","tips_python","tensorflow_python","scratch_using_python","scratch_python","scraping_using_python","scikit_learn_python","reddit_python","realpythonproject","pythonlevel","pythonic","pythondatasciencehandbook","pythonanywhere","python_well","python_visualization_panel","python_visualization","python_virtual_environment","python_using_machine","python_tips","python_tensorflow","python_seaborn","python_scripts","python_script","python_scratch","python_python","python_plotly","python_pipeline","python_packages","python_opencv","python_oop","python_nlp","python_model","python_matplotlib","python_map","python_lists","python_library","python_libraries","python_learn","python_it","python_introduction","python_guide","python_functions","python_feature","python_example","python_environment","python_elasticsearch","python_dictionary","python_dictionaries","python_decorators","python_data_analytics","python_data_analysis","python_data","python_dash","python_class","python_best_practices","python_applications","python_analysis","python_algorithm","python_ai","python_a_guide","python","plotly_python","pipeline_python","opencv_python","open_source_python","oop_python","nlp_python","new_python_environment","model_python","map_python","manage_python","lists_python","learning_using_python","learning_python","learn_python_data","learn_python","language_python","ipython_magic_commands","ipython","introduction_python","install_python","implementations_python","guide_python","files_python","feature_python","example_python","elasticsearch_python","dictionaries_python","decorators_python","data_python","dash_python","cool_python_libraries","applications_python","analysis_python","algorithm_python","a_python_package","a_python_library","rostami","calidad","dotson","stoeckl","anisdismail","simple_tips","data_science_introduction","scratch_using","scikit_learn_library","praw","urllib","boyangzhao","appsilon","earthinversion","theaisummer","advancedtype","readable","jakevdp","niyogi","netlify","meta_programming","visualization_panel_app","visualization_package","virtual_environment","pipenv","venv","predict_student_grades","writing_advanced_sql","scripts","shell_commands","script","julia_language","julia","packages","libraries","in_libraries","library","functions","decorators","development_environment","virtualenv","dictionary","a_dictionary","data_analysis_library","plotly_dash","interactive_visualizations","base_class","gsitechnology","fbddb","salichon","aficionado","leiserson","abdel","munn","dunson","cython","visualization_using","excellent_tool","open_source_tool","runserver","locustfile","grisel","praxis","jupyter","install","install_tensorflow","equivalents","idan","katharina","awesomedata","rubanova","a_library","a_package"],"shape":["box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box"],"degree":[2,1,2,4,6,2,1,2,2,1,2,4,1,1,2,1,3,1,3,6,1,6,2,3,4,1,2,6,2,2,5,2,2,2,2,2,2,2,3,5,2,4,2,2,2,2,2,5,2,2,2,2,2,1,2,4,1,4,2,2,2,1,4,3,3,2,2,2,2,2,1,2,2,2,2,2,2,2,4,2,4,1,2,2,1,2,2,2,2,2,2,2,2,3,4,2,2,2,4,5,1,1,1,1,1,3,3,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1],"betweenness":[0,0,60,992.333333333333,1350,565.083333333333,0,128.916666666667,280,0,104,280,0,0,12,0,339,0,660,679,0,578.916666666667,83.0833333333333,232,33,0,81,299,81,33.5,186.5,5,5,10,12,2,118,118,8,448,174,232,118,228,0,1,60,215.583333333333,38.5833333333333,10.3333333333333,53.5833333333333,45.9166666666667,60,0,60,29,0,6,9,9,1,0,3,57,57,29,29,1,29,56,0,11.5,20.5,0,29,1,29,29,13,6,11,0,2,1,0,60,60,4,4,60,60,60,60,119,6,60,60,60,177,3,0,0,0,0,0,39.5,48.1666666666667,0,0,0,0,0,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,29,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"value":[0,0,120,3969.33333333333,8100,1130.16666666667,0,257.833333333333,560,0,208,1120,0,0,24,0,1017,0,1980,4074,0,3473.5,166.166666666667,696,132,0,162,1794,162,67,932.5,10,10,20,24,4,236,236,24,2240,348,928,236,456,0,2,120,1077.91666666667,77.1666666666667,20.6666666666667,107.166666666667,91.8333333333333,120,0,120,116,0,24,18,18,2,0,12,171,171,58,58,2,58,112,0,23,41,0,58,2,58,58,52,12,44,0,4,2,0,120,120,8,8,120,120,120,120,357,24,120,120,120,708,15,0,0,0,0,0,118.5,144.5,0,0,0,0,0,18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,58,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"edges":{"from":[1,2,3,4,4,4,4,5,5,5,5,6,7,8,9,10,11,11,12,12,12,12,13,14,15,15,16,17,17,18,19,19,20,20,20,20,21,22,22,22,22,23,24,24,25,25,25,26,27,28,28,28,28,29,30,31,31,31,31,32,33,34,35,36,37,38,39,39,40,40,40,40,41,42,42,43,44,45,45,46,47,48,48,48,48,49,50,50,51,52,53,54,55,56,56,56,57,58,58,58,58,59,60,61,62,63,63,63,63,64,64,65,65,66,67,68,68,69,70,71,72,73,74,74,75,76,76,77,78,79,79,80,81,81,81,82,83,84,84,85,86,87,88,89,90,91,92,93,94,94,95,95,95,95,96,97,98,99,99,99,100,100,100],"to":[1,3,5,5,6,8,9,17,19,20,20,22,22,23,24,25,27,28,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,42,43,44,46,47,48,49,51,52,53,55,56,59,60,61,64,65,66,67,69,70,72,73,75,77,78,79,79,80,81,83,86,87,88,89,90,91,92,93,94,96,97,98,99,100,100,101,102,103,104,105,106,106,106,107,107,107,108,109,110,111,112,113,113,114,115,116,117,118,119,120,121,122,123,124,124,125,126,127,128,129,130,131,132,133,134,134,135,135,136,136,137,138,139,140,141,142,143,144,145,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,172,173],"label":["similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity"]},"nodesToDataframe":true,"edgesToDataframe":true,"options":{"width":"100%","height":"100%","nodes":{"shape":"dot"},"manipulation":{"enabled":false}},"groups":null,"width":null,"height":null,"idselection":{"enabled":false,"style":"width: 150px; height: 26px","useLabels":true,"main":"Select by id"},"byselection":{"enabled":false,"style":"width: 150px; height: 26px","multiple":false,"hideColor":"rgba(200,200,200,0.5)","highlight":false},"main":null,"submain":null,"footer":null,"background":"rgba(0, 0, 0, 0)","highlight":{"enabled":true,"hoverNearest":false,"degree":1,"algorithm":"all","hideColor":"rgba(200,200,200,0.5)","labelOnly":true},"collapse":{"enabled":false,"fit":false,"resetHighlight":true,"clusterOptions":null,"keepCoord":true,"labelSuffix":"(cluster)"}},"evals":[],"jsHooks":[]}</script>
+<script type="application/json" data-for="htmlwidget-1">{"x":{"nodes":{"id":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167],"label":["well_python","using_python_selenium","using_python_machine","tips_python","tensorflow_python","scratch_using_python","scratch_python","scraping_using_python","scikit_learn_python","reddit_python","realpythonproject","pythonlevel","pythondatasciencehandbook","pythonanywhere","python_well","python_visualization_panel","python_visualization","python_virtual_environment","python_using_machine","python_tricks","python_tips","python_tensorflow","python_seaborn","python_scripts","python_script","python_scratch","python_python","python_projects","python_program","python_plotly","python_pipeline","python_pandas","python_packages","python_opencv","python_oop","python_notebook","python_nlp","python_model","python_matplotlib","python_map","python_lists","python_list","python_library","python_libraries","python_learn","python_it","python_introduction","python_helped","python_guide","python_functions","python_feature","python_exploratory_data","python_example","python_environment","python_elasticsearch","python_dictionary","python_dictionaries","python_decorators","python_data_analytics","python_data_analysis","python_data","python_dash","python_class","python_best_practices","python_applications","python_analysis","python_algorithm","python_a_guide","python","plotly_python","pipeline_python","pandas_python","opencv_python","oop_python","nlp_python","new_python_environment","model_python","map_python","manage_python","lists_python","learning_python","learn_python_data","learn_python","language_python","know_python","ipython_magic_commands","introduction_python","install_python","guide_python","feature_python","example_python","elasticsearch_python","dictionaries_python","decorators_python","data_python","dash_python","cool_python_libraries","better_python_programmer","applications_python","analysis_python","algorithm_python","a_python_package","a_python_library","anisdismail","gsitechnology","dotson","c_o_d","simple_tips","data_science_introduction","scratch_using","scikit_learn_library","praw","boyangzhao","appsilon","wildregressor","opensourceoptions","advancedtype","jakevdp","niyogi","hervé","netlify","visualization_panel_app","visualization_package","virtual_environment","pipenv","venv","predict_student_grades","writing_advanced_sql","scripts","shell_commands","script","geoviews","packages","libraries","in_libraries","imutils","jupyter_notebook","library","package","treehouse","functions","decorators","data_using_pycaret","a_dictionary","dictionary","data_analysis_library","plotly_dash","interactive_visualizations","dataclass","fbdea","fbddb","dunson","leiserson","abdel","andrade","julia","programming_language","cython","runserver","julia_language","install","install_tensorflow","awesomedata","idan","manyika","a_library","a_package"],"shape":["box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box","box"],"degree":[4,2,4,7,2,1,2,2,1,1,4,1,3,1,4,1,7,5,1,2,6,2,2,2,3,2,2,1,2,5,2,2,6,3,2,1,2,2,2,2,4,4,4,5,2,2,2,1,2,2,2,1,2,1,2,2,2,2,2,1,2,4,1,4,2,2,2,4,5,4,2,2,2,2,2,2,2,2,1,4,2,2,4,3,4,6,2,2,2,2,2,2,2,2,2,3,4,2,2,2,2,4,5,1,3,1,1,3,3,1,1,1,1,1,1,2,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,2,2,2,1,1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1],"betweenness":[0,0,27,603,14,0,378,306,0,0,470,0,30,0,444.5,0,450.5,297,0,44,745,126,12,25,200.5,86,10,0,22,60,42,146.5,314,160,82,0,40,40,59,59,82,245,500,282.5,86,86,86,0,12,4,10,0,24,0,24,44,61.5,61.5,44,0,18,34,0,27,12,12,12,3,42,138,38.5,42,42,42,42,42,42,1,0,42.5,21,21,42,87,339,170,44,1,21.5,21.5,44,44,44,44,1,11,6,3,3,6,1,24,24,0,86.5,0,0,24,34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,20.5,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0.5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"value":[0,0,108,4221,28,0,756,612,0,0,1880,0,90,0,1778,0,3153.5,1485,0,88,4470,252,24,50,601.5,172,20,0,44,300,84,293,1884,480,164,0,80,80,118,118,328,980,2000,1412.5,172,172,172,0,24,8,20,0,48,0,48,88,123,123,88,0,36,136,0,108,24,24,24,12,210,552,77,84,84,84,84,84,84,2,0,170,42,42,168,261,1356,1020,88,2,43,43,88,88,88,88,2,33,24,6,6,12,2,96,120,0,259.5,0,0,72,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,41,0,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"edges":{"from":[1,1,2,3,3,3,3,4,4,4,4,5,6,7,8,9,10,11,11,11,11,12,13,13,13,14,15,15,16,17,17,17,17,18,18,18,18,19,20,21,21,21,21,22,23,23,24,24,25,25,26,27,28,29,30,30,30,31,32,33,33,33,33,34,34,35,36,37,38,39,40,41,41,42,42,43,43,43,44,44,44,44,45,46,47,48,49,50,50,51,52,53,54,55,56,56,57,58,59,60,61,62,62,62,63,64,64,64,64,65,66,67,68,68,68,68,69,69,69,69,70,70,71,72,73,74,75,76,77,78,79,80,80,81,82,83,83,84,84,85,85,86,86,86,86,87,88,88,89,90,91,92,93,94,95,96,96,97,97,97,97,98,99,100,101,102,102,102,103,103,103],"to":[1,1,2,4,4,4,5,7,8,15,15,17,17,17,18,20,21,21,22,25,26,27,29,30,30,31,32,33,33,34,35,37,38,39,40,41,41,42,42,43,44,45,46,47,49,51,53,55,57,58,59,61,62,65,66,67,69,70,70,71,72,73,74,75,76,77,78,80,80,81,82,83,83,84,85,85,86,86,87,89,90,91,92,93,94,95,96,98,99,100,101,102,103,103,104,105,105,105,106,107,108,108,108,109,109,109,110,111,112,113,114,115,116,116,117,118,119,120,121,122,123,124,124,125,126,127,128,129,130,131,132,133,133,134,134,135,135,136,137,138,139,140,141,142,143,144,145,146,147,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,166,167],"label":["similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity","similarity"]},"nodesToDataframe":true,"edgesToDataframe":true,"options":{"width":"100%","height":"100%","nodes":{"shape":"dot"},"manipulation":{"enabled":false}},"groups":null,"width":null,"height":null,"idselection":{"enabled":false,"style":"width: 150px; height: 26px","useLabels":true,"main":"Select by id"},"byselection":{"enabled":false,"style":"width: 150px; height: 26px","multiple":false,"hideColor":"rgba(200,200,200,0.5)","highlight":false},"main":null,"submain":null,"footer":null,"background":"rgba(0, 0, 0, 0)","highlight":{"enabled":true,"hoverNearest":false,"degree":1,"algorithm":"all","hideColor":"rgba(200,200,200,0.5)","labelOnly":true},"collapse":{"enabled":false,"fit":false,"resetHighlight":true,"clusterOptions":null,"keepCoord":true,"labelSuffix":"(cluster)"}},"evals":[],"jsHooks":[]}</script>
 <p>Now the same again for my pretrained fasttext embeddings. I felt like buying the Pastukhov databases for an affordable 500 euro and trained an ngram fasttext model on 1.3 billion English google queries. For the query data science, reasonable similar bigrams are suggested below:</p>
 <pre class="r"><code>library(fastTextR)
 library(wordVectors)
