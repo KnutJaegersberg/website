@@ -1,0 +1,346 @@
+---
+title: Mining Trends in Data Science Blog Headlines - Fractal Dimension Reduction for Topic Modeling
+author: Knut Jägersberg
+date: '2022-08-25'
+slug: []
+categories:
+  - Data Science
+tags: []
+---
+
+<script src="{{< blogdown/postref >}}index_files/htmlwidgets/htmlwidgets.js"></script>
+<link href="{{< blogdown/postref >}}index_files/wordcloud2/wordcloud.css" rel="stylesheet" />
+<script src="{{< blogdown/postref >}}index_files/wordcloud2/wordcloud2-all.js"></script>
+<script src="{{< blogdown/postref >}}index_files/wordcloud2/hover.js"></script>
+<script src="{{< blogdown/postref >}}index_files/wordcloud2-binding/wordcloud2.js"></script>
+
+
+<div id="fractal-dimension-reduction-for-topic-modeling" class="section level1">
+<h1>Fractal Dimension Reduction for Topic Modeling</h1>
+<p>In this post, I will share an alternative approach to mine important topics from Data Science Blog headlines. This approach does not use clustering, but tries to explain document embeddings along interpretable dimensions. Many reprojections using PCA and the likes are possible. We want to use an approximation of the datasets intrinsic dimensions, the fractal dimension of the reprojection method. Fractal dimension measures how simple (low) or complex (high) a dataset really is. We approximate the true form of the data via reprojection by rounding from the number of fractal dimensions of the data.<br />
+We can use word embedding to create a semantic representation of documents and phrases. Common approaches then apply clustering algorithms to extract topics. I’ve made good experiences with hierarchical clustering and mid sized clusters. Nonetheless, I have been dissatisfied by the fact this approach leaves the user to decide what topic to learn about first. The size of the clusters is not always a good representation how important it really is for the discourse at hand, especially if the data does not center around clearly separable classes.<br />
+An alternative approach I came to like is to use dimension reduction, namely PCA and factor loadings to find topic loaded keywords, which explain most of the variance in the data. On informal tests with clearly separated data, PCA put the data on some of the classes as dimensions.
+However, PCA yields a lot of dimensions.</p>
+<p>The motivation for this experiment is twofold:</p>
+<ol style="list-style-type: decimal">
+<li>Find the true number of reduced dimensions in the data by observing at which number of retained dimensions the fractal dimension of the dataset stabilizes.<br />
+</li>
+<li>Try out non-linear dimension reduction with an autoencoder, apply predictive power score to find labels for the dimensions and compare its fractal dimension with the PCAs results. Check if the method with more fractal dimensions yields better dimensions, as suggested in the literature (see <a href="https://www.ml.cmu.edu/research/dap-papers/skkumar_kdd_project.pdf" class="uri">https://www.ml.cmu.edu/research/dap-papers/skkumar_kdd_project.pdf</a>).</li>
+</ol>
+<p>Ideally this should yield a low number of dimensions, which help us to quickly understand core thoughtgood. The dimensions can be used to plot and analyse the data, directly or to guide at which topics (by their keyword labels) to look first using conventional embedding based methods.</p>
+<div id="fractal-pca" class="section level2">
+<h2>Fractal PCA</h2>
+<p>Let’s see how many intrinsic dimensions different PCA solutions have. I choose a method which estimates intrinsic dimensions relatively fast, for practical reasons.<br />
+In the plot we see, the number only slowly increases beyond 10 intrinsic dimensions. The fractal dimension with the first 100 is below 12.85. 12 intrinsic dimensions are reasonable.</p>
+<pre class="r"><code>pacman::p_load(tidyverse, tidytable, data.table, tidytext, textrank, job, UBL, archetypes, future, future.callr, genieclust, doc2vec, quanteda, udpipe, qrpca, ider, ranger, ggcorrplot)
+
+
+blogposts &lt;- fread(&quot;/home/knut/Desktop/my_niche/data/twds_scrape_distinct.csv&quot;)
+
+titles &lt;- blogposts %&gt;% filter.(variable==&quot;title&quot;) %&gt;% distinct(value)
+
+f &lt;- callr({
+  library(reticulate)
+  use_python(&quot;/home/knut/transformers/bin/python&quot;, required = T)
+  st &lt;- import(&quot;sentence_transformers&quot;)
+  model &lt;- st$SentenceTransformer(&#39;all-mpnet-base-v2&#39;)
+  embeddings = model$encode(titles$value)
+ 
+}, workers=1)
+
+
+embeddings &lt;- value(f)
+
+
+
+# extract descriptive keywords
+
+f &lt;- callr({
+  library(spacyr)
+  spacy_initialize(model = &quot;en_core_web_trf&quot;, python_executable = &quot;/home/knut/transformers/bin/python3&quot;)
+
+  tags &lt;- spacy_parse(titles$value)
+  
+  
+}, workers=1)
+
+
+tags &lt;- value(f)
+
+title_tags &lt;- tags %&gt;% mutate(id=stringr::str_remove(doc_id, &quot;text&quot;) %&gt;% as.numeric()) %&gt;% inner_join.(titles %&gt;% mutate(id=row_number()))
+
+
+
+
+
+
+keyw &lt;- textrank_keywords(title_tags$lemma,
+                          relevant = title_tags$pos %in% c(&quot;NOUN&quot;, &quot;VERB&quot;, &quot;ADJ&quot;), p = 0.3)
+keyw &lt;- subset(keyw$keywords, ngram &gt; 0 &amp; freq &gt; 1)%&gt;% mutate(title=str_replace_all(keyword, &quot;-&quot;, &quot; &quot;))
+
+keyw$title &lt;- str_squish(keyw$title)
+
+
+titles_ngrams &lt;- titles %&gt;% unnest_ngrams(output = &quot;ngram&quot;, input = &quot;value&quot;, n = 3, n_min = 1, drop = F) %&gt;% inner_join.(keyw %&gt;% mutate(ngram=title)) 
+
+
+titles_ngrams &lt;- titles_ngrams %&gt;% inner_join.(titles %&gt;% distinct.(value) %&gt;% mutate(doc_id=row_number()))
+
+x &lt;- document_term_frequencies(titles_ngrams[, c(&quot;doc_id&quot;, &quot;ngram&quot;)])
+
+dfm &lt;- document_term_matrix(x) %&gt;% as.dfm() %&gt;% as.matrix() %&gt;% data.table::as.data.table() %&gt;% mutate(value=titles_ngrams$value %&gt;% unique())%&gt;% imputeTS::na.replace(0)
+
+
+#pca 
+
+embeddings_filtered &lt;- embeddings[titles %&gt;% mutate(doc_id=row_number()) %&gt;% filter.(value%in%titles_ngrams$value) %&gt;% pull(doc_id),]
+
+
+pca1 &lt;- qrpca(embeddings_filtered)
+
+loadings &lt;- pca1$rotation %&gt;% as.data.frame()
+
+
+
+components &lt;- pca1$x %&gt;% as.data.frame()
+
+#estimate fractal dims
+
+fractal_dims &lt;- data.table(dim=c(), fractal_dim=c())
+
+for (i in 5:30){
+  components_part &lt;- components[,1:i]
+  fractal_dimension &lt;- nni(components_part)
+  fractal_dims &lt;- fractal_dims %&gt;% bind_rows.(data.table(dim=i, fractal_dim=fractal_dimension))
+  print(c(i, fractal_dimension))
+}</code></pre>
+<pre><code>## [1] 5.000000 4.897236
+## [1] 6.000000 5.666823
+## [1] 7.000000 6.322528
+## [1] 8.000000 6.879264
+## [1] 9.000000 7.382553
+## [1] 10.000000  7.827464
+## [1] 11.000000  8.181225
+## [1] 12.000000  8.484103
+## [1] 13.000000  8.749288
+## [1] 14.000000  9.016126
+## [1] 15.000000  9.265952
+## [1] 16.000000  9.420807
+## [1] 17.000000  9.634053
+## [1] 18.000000  9.788483
+## [1] 19.0000  9.9498
+## [1] 20.00000 10.06284
+## [1] 21.00000 10.22702
+## [1] 22.00000 10.34785
+## [1] 23.00000 10.41959
+## [1] 24.00000 10.51443
+## [1] 25.00000 10.59699
+## [1] 26.00000 10.68032
+## [1] 27.00000 10.75729
+## [1] 28.00000 10.83393
+## [1] 29.00000 10.90076
+## [1] 30.00000 10.96492</code></pre>
+<pre class="r"><code>ggplot(fractal_dims) +
+  aes(x = dim, y = fractal_dim) +
+  geom_line(size = 0.5, colour = &quot;#112446&quot;) +
+  theme_minimal()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
+<p>What keywords are associated with fractal principal components?<br />
+Deep learning, python, coding, databases, nlp, deployment, ML, introductions, algorithms, data science and visualisation seem to organize the headlines.</p>
+<pre class="r"><code>components_part &lt;- components[,1:12]
+
+correlation_matrix &lt;- cor(dfm %&gt;% select(-value) %&gt;% as.matrix(), components_part)
+rotatedLoadings &lt;- varimax(correlation_matrix)
+l &lt;- rotatedLoadings$loadings
+rotatedLoadings &lt;- data.frame(matrix(as.numeric(l), attributes(l)$dim, dimnames=attributes(l)$dimnames))
+
+
+rotatedLoadings$token &lt;- rownames(rotatedLoadings)
+rotatedLoadings &lt;- rotatedLoadings %&gt;% filter(token%in%colnames(embeddings %&gt;% as.data.frame)==F) %&gt;% data.table::melt(id.vars=&quot;token&quot;)
+rotatedLoadings &lt;- rotatedLoadings %&gt;% group_by(variable) %&gt;% arrange(desc(value),.by_group = T) %&gt;% top_n.(10, .by = variable)
+
+ggcharts::bar_chart(rotatedLoadings, x = token, y = value, facet = variable, top_n = 15)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+</div>
+<div id="fractal-autoencoder" class="section level2">
+<h2>Fractal Autoencoder</h2>
+<p>For the autoencoder, I initially trained one with 100 latent dimensions. It had 13.44 intrinsic dimensions. Looping shows intrinsic dimension flattens out with 10 intrinsic dimensions, I grab 12.</p>
+<pre class="r"><code>fractal_dims &lt;- data.table(dim=c(), fractal_dim=c())
+
+# for (i in 5:30){
+#   f &lt;- callr({
+#     library(reticulate)
+#     use_python(&quot;/home/knut/cvae/bin/python&quot;, required = T)
+#     cvae &lt;- import(&quot;cvae&quot;)$cvae
+#     embedder &lt;- cvae$CompressionVAE(embeddings, dim_latent=as.integer(i))
+#     embedder$train()
+#     CompressionVAE &lt;- embedder$embed(embeddings)
+#    
+#   }, workers=1)
+#   
+#   
+#   CompressionVAE &lt;- value(f)
+#   fractal_dimension &lt;- nni(CompressionVAE)
+#   fractal_dims &lt;- fractal_dims %&gt;% bind_rows.(data.table(dim=i, fractal_dim=fractal_dimension))
+#   print(c(i, fractal_dimension))
+# }
+
+
+
+ggplot(fread(&quot;/home/knut/Desktop/fractal_dims_autoenc.csv&quot;)) +
+  aes(x = dim, y = fractal_dim) +
+  geom_line(size = 0.5, colour = &quot;#112446&quot;) +
+  theme_minimal()</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<p>This is what a scatterplot matrix of the autoencoder looks like. These should also be a nice basis for cluster based topic modeling in a later step. We can see some nice correlations:</p>
+<pre class="r"><code>  # f &lt;- callr({
+  #   library(reticulate)
+  #   use_python(&quot;/home/knut/cvae/bin/python&quot;, required = T)
+  #   cvae &lt;- import(&quot;cvae&quot;)$cvae
+  #   embedder &lt;- cvae$CompressionVAE(embeddings, dim_latent=as.integer(12), batch_size = 1L)
+  #   embedder$train()
+  #   CompressionVAE &lt;- embedder$embed(embeddings)
+  # 
+  # }, workers=1)
+  # 
+  # 
+  # CompressionVAE &lt;- value(f)
+  # nni(CompressionVAE)
+
+
+autoencoder_embeddings &lt;- fread(&quot;/home/knut/Desktop/autoenc.csv&quot;)
+
+GGally::ggpairs(autoencoder_embeddings)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+<p>We don’t have labels for the dimensions yet and don’t know which dimensions are more important. As easy approach, I’ll just estimate variable importance of document feature matrixes of keywords predicting each autoencoder dimension for themselves.<br />
+To order dimension importance (as variance explained does so naturally for PCA), I’ll use unsupervised random forest.<br />
+Parts of this code takes some time to run, so I reload results.<br />
+These results are different from PCA, as the dimensions are not required to be orthogonal, is more overlap.
+So I summarize keywords accross dimensions with a simple count and tf-idf keywords to signify differences.</p>
+<p>Let’s first look at the general topics, which span across different dimensions. For simplicities sake I grab the top 50 most important terms and count them. The word cloud plot directly shows across how many dimensions the words were in the 50 most important keywords.</p>
+<pre class="r"><code>rnumbers &lt;- titles %&gt;% mutate(id=row_number()) %&gt;% inner_join.(titles_ngrams %&gt;% distinct.(value)) %&gt;% pull(id)
+
+# v1 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V1))
+# v2 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V2))
+# v3 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V3))
+# v4 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V4))
+# v5 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V5))
+# v6 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V6))
+# v7 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V7))
+# v8 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V8))
+# v9 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V9))
+# v10 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V10))
+# v11 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V11))
+# v12 &lt;- bind_cols.(dfm, autoencoder_embeddings[rnumbers,] %&gt;% select(V12))
+# 
+# 
+# 
+# # dfm variable importance per latent variable 
+# 
+# v1.rg = ranger::ranger(data = v1, dependent.variable.name = &quot;V1&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v2.rg = ranger::ranger(data = v2, dependent.variable.name = &quot;V2&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v3.rg = ranger::ranger(data = v3, dependent.variable.name = &quot;V3&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v4.rg = ranger::ranger(data = v4, dependent.variable.name = &quot;V4&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v5.rg = ranger::ranger(data = v5, dependent.variable.name = &quot;V5&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v6.rg = ranger::ranger(data = v6, dependent.variable.name = &quot;V6&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v7.rg = ranger::ranger(data = v7, dependent.variable.name = &quot;V7&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v8.rg = ranger::ranger(data = v8, dependent.variable.name = &quot;V8&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v9.rg = ranger::ranger(data = v9, dependent.variable.name = &quot;V9&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v10.rg = ranger::ranger(data = v10, dependent.variable.name = &quot;V10&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v11.rg = ranger::ranger(data = v11, dependent.variable.name = &quot;V11&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# v12.rg = ranger::ranger(data = v12, dependent.variable.name = &quot;V12&quot;, importance = &quot;impurity&quot;) %&gt;% importance()
+# 
+# 
+# #unsupervised random forest latent variable importance 
+# 
+# urf &lt;- randomUniformForest::unsupervised.randomUniformForest(autoencoder_embeddings, ntree=1000)
+# urf_supervised &lt;- as.supervised(urf, autoencoder_embeddings, bagging=TRUE, ntree=500)
+# urf_importance &lt;- importance(urf_supervised, Xtest = autoencoder_embeddings)
+
+
+fastSave::load.lbzip2(&quot;/home/knut/Desktop/unsupervised_rf.RDataFS&quot;)
+
+general_keywords &lt;- urf_importance$globalVariableImportance %&gt;% left_join(data.table(importance=c(v1.rg, v2.rg, v3.rg, v4.rg, v5.rg, v6.rg, v7.rg, v8.rg, v9.rg, v10.rg, v11.rg, v12.rg), keyword=names(c(v1.rg, v2.rg, v3.rg, v4.rg, v5.rg, v6.rg, v7.rg, v8.rg, v9.rg, v10.rg, v11.rg, v12.rg)), variables=c(rep(&quot;V1&quot;, length(v1.rg)), rep(&quot;V2&quot;, length(v2.rg)), rep(&quot;V3&quot;, length(v3.rg)), rep(&quot;V4&quot;, length(v4.rg)), rep(&quot;V5&quot;, length(v5.rg)), rep(&quot;V6&quot;, length(v6.rg)), rep(&quot;V7&quot;, length(v7.rg)), rep(&quot;V8&quot;, length(v8.rg)), rep(&quot;V9&quot;, length(v9.rg)), rep(&quot;V10&quot;, length(v10.rg)), rep(&quot;V11&quot;, length(v11.rg)), rep(&quot;V12&quot;, length(v12.rg)))) %&gt;% group_by(variables) %&gt;% arrange(desc(importance)) %&gt;% slice_head(n = 50)) %&gt;% filter(keyword!=&quot;value&quot;)
+general_keywords_frequencies &lt;- general_keywords %&gt;% group_by(keyword) %&gt;% count(sort = T) 
+
+wordcloud2::wordcloud2(general_keywords_frequencies %&gt;% rename(word=keyword, freq=n), size = 0.3)</code></pre>
+<div id="htmlwidget-1" style="width:672px;height:480px;" class="wordcloud2 html-widget"></div>
+<script type="application/json" data-for="htmlwidget-1">{"x":{"word":["data","data science","deep","deep learning","learning","machine","machine learning","neural","python","pytorch","science","ai","image","r","tensorflow","classification","convolutional","data scientist","network","neural network","scientist","scratch","training","a data","analysis","lstm","a data scientist","backpropagation","cnn","gradient","detection","generative","optimization","reinforcement","reinforcement learning","sql","transfer","analytics","artificial","recognition","a","career","interview","object detection","recurrent","train","transfer learning","tuning","variational","vision","a data science","autoencoder","covid","covid 19","data visualization","know","model","nlp","testing","visualization","artificial intelligence","augmentation","b","business","data analysis","edition","gan","graph","introduction","job","learn","loss","test","text","activation","api","b testing","customer","data analyst","gradient descent","guide","hyperparameter","intelligence","interactive","learn data science","learning data science","object","read","regularization","scraping","understanding","web","airflow","analyst","app","attention","become","bi","bigquery","coffee","computer vision","coronavirus","data science interview","database","deep q","descent","espresso","excel","explainable","exploratory","future","gpu","mathematics","ml","need","non","overfitting","own deep learning","physics","power bi","propagation","q","quantum","recommendation","rnn","science interview","science project","tableau","teach","top"],"freq":[12,12,12,12,12,12,12,12,12,12,12,11,11,11,11,10,10,10,10,10,10,10,10,9,9,9,8,8,8,8,7,7,7,7,7,7,7,6,6,6,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"fontFamily":"Segoe UI","fontWeight":"bold","color":"random-dark","minSize":0,"weightFactor":4.5,"backgroundColor":"white","gridSize":0,"minRotation":-0.785398163397448,"maxRotation":0.785398163397448,"shuffle":true,"rotateRatio":0.4,"shape":"circle","ellipticity":0.65,"figBase64":null,"hover":null},"evals":[],"jsHooks":{"render":[{"code":"function(el,x){\n                        console.log(123);\n                        if(!iii){\n                          window.location.reload();\n                          iii = False;\n\n                        }\n  }","data":null}]}}</script>
+<p>General topics include data science, deep learning, machine learning, classification, neural nets, visualizations, careers.</p>
+<pre class="r"><code>general_keywords_frequencies </code></pre>
+<pre><code>## # A tibble: 130 × 2
+## # Groups:   keyword [130]
+##    keyword              n
+##    &lt;chr&gt;            &lt;int&gt;
+##  1 data                12
+##  2 data science        12
+##  3 deep                12
+##  4 deep learning       12
+##  5 learning            12
+##  6 machine             12
+##  7 machine learning    12
+##  8 neural              12
+##  9 python              12
+## 10 pytorch             12
+## # … with 120 more rows</code></pre>
+<p>So what about dimension distinguishing important keywords?<br />
+I removed the general topics as stopwords, below we see the variable importance for terms in random forests predicting each latent variable.
+These latent variables are also sorted for their unsupervised random forest importance.<br />
+It is not surprising that the general topics AI (and properly lots of general data science topics) are fractal dimension 9, which also correlates with V8 (BI jobs), V10 and V6 (learning data science), V12 (data visualization).
+Covid 19 / NLP market intelligence and neural nets also seem to organize the topics.</p>
+<pre class="r"><code>distinctive_keywords &lt;- general_keywords %&gt;% filter(keyword%in%(general_keywords_frequencies %&gt;% filter(n&gt;4) %&gt;% pull(keyword))==F) %&gt;% mutate(variables=factor(variables, levels = urf_importance$globalVariableImportance %&gt;% pull(variables))) 
+
+
+cowplot::plot_grid(ggcharts::bar_chart(distinctive_keywords, x = keyword, y = importance, facet = variables, top_n = 15), ggcorrplot(autoencoder_embeddings %&gt;% cor()), ncol = 2, rel_widths = c(3,1))</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-7-1.png" width="672" /></p>
+</div>
+</div>
+<div id="conclusion" class="section level1">
+<h1>Conclusion</h1>
+<p>We can see, that using fractal dimensions to project the dataset into intrinsic, interpretable and approximately true dimensions help a lot to get a general overview on what topics are influential in those data science headlines. These topics as well as the projections are great starting points for clustering based topic modelling and weak labeling with those keywords.</p>
+<style type="text/css">
+
+@import url(https://fonts.googleapis.com/css?family=Open+Sans:wght@300);
+
+body{ /* Normal  */
+      font-size: 16px;
+      font-family: "Open Sans";
+  }
+
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 20px;
+  color: #324c63;
+}
+h1 { /* Header 1 */
+  font-size: 30px;
+  font-family: "Roboto";
+}
+h2 { /* Header 2 */
+    font-size: 26px;
+    font-family: "Roboto";
+}
+h3 { /* Header 3 */
+  font-size: 22px;
+  font-family: "Roboto";
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+    color: white;
+    background-color: black;
+}
+
+p { /* Code block - determines code spacing between lines */
+    font-size: 18px;
+    font-family: "Open Sans";
+    margin: 0px 0px 30px;
+    padding: 10px;
+    line-height: 200%;
+}
+</style>
+</div>
