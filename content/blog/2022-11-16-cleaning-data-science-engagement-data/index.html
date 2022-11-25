@@ -1,0 +1,196 @@
+---
+title: Cleaning data science engagement data
+author: Knut Jägersberg
+date: '2022-11-16'
+slug: []
+categories:
+  - Data Science
+tags: []
+---
+
+<script src="{{< blogdown/postref >}}index_files/htmlwidgets/htmlwidgets.js"></script>
+<link href="{{< blogdown/postref >}}index_files/wordcloud2/wordcloud.css" rel="stylesheet" />
+<script src="{{< blogdown/postref >}}index_files/wordcloud2/wordcloud2-all.js"></script>
+<script src="{{< blogdown/postref >}}index_files/wordcloud2/hover.js"></script>
+<script src="{{< blogdown/postref >}}index_files/wordcloud2-binding/wordcloud2.js"></script>
+
+
+<div id="content-intelligence-headline-engagement" class="section level1">
+<h1>Content Intelligence headline engagement</h1>
+<p>In this post, I’ll mix together a bunch of headlines datasets I discovered with engagement and make it suitable for predicting engagement level from text for the domain of content intelligence.</p>
+<div id="data-sources" class="section level2">
+<h2>Data sources</h2>
+<ul>
+<li>tweets on data science</li>
+<li>reddit posts</li>
+<li>search keywords</li>
+<li>blog posts</li>
+<li>ML paper social shares</li>
+</ul>
+<div id="content-intelligence-tweets" class="section level3">
+<h3>Content Intelligence Tweets</h3>
+<p>These tweets come from various topics from data science and content marketing.</p>
+<pre class="r"><code>pacman::p_load(tidyverse, tidytable, data.table, gtools)
+
+source(&quot;/home/knut/Documents/clean.R&quot;)
+setwd(&quot;/run/media/knut/HD/datasets/data_science_engagement/tweets/&quot;)
+
+files &lt;- list.files(&quot;/run/media/knut/HD/datasets/data_science_engagement/tweets/&quot;, pattern = &quot;*.csv&quot;) %&gt;% set_names()
+
+tweets &lt;- files %&gt;% 
+    map_df(.f = fread, select = c(&quot;tweet&quot;, &quot;username&quot;, &quot;replies_count&quot;, &quot;retweets_count&quot;, &quot;likes_count&quot;), .id =&quot;filenames&quot;) %&gt;% mutate(tweet=clean(tweet, removeTwitter = T, removeURL = T), replies_count=ifelse(replies_count&lt;3, 0, replies_count)) </code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159257</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159298</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159340</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159343</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159348</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159378</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159383</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159386</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159416</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159419</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159421</code></pre>
+<pre><code>## Warning in gsub(urlregex, &quot;&quot;, x, perl = TRUE): PCRE error
+##  &#39;match limit exceeded&#39;
+##  for element 159426</code></pre>
+<pre class="r"><code>tweets$engagement &lt;- tweets$likes_count + tweets$replies_count*26.35+tweets$retweets_count*2.79 %&gt;% as.numeric()
+
+#look at quantiles larger than 0.5 per group, where engagement tends to kick in
+
+tweet_quantiles &lt;- tweets %&gt;% filter(!is.na(engagement)) %&gt;% group_by(filenames) %&gt;% mutate(quantile = ntile(engagement, 10)) %&gt;% mutate(quantile=ifelse(quantile&gt;4, quantile, 4)) %&gt;% ungroup()
+
+tweet_quantiles %&gt;% tidytext::unnest_tokens(&quot;word&quot;, &quot;tweet&quot;) %&gt;% count.(word, sort = T) %&gt;% top_n(500) %&gt;% filter.(word%in%quanteda::stopwords(source = &quot;smart&quot;)==F) %&gt;% rename(freq=n) %&gt;% wordcloud2::wordcloud2()</code></pre>
+<div id="htmlwidget-1" style="width:672px;height:480px;" class="wordcloud2 html-widget"></div>
+<script type="application/json" data-for="htmlwidget-1">{"x":{"word":["marketing","content","inboundmarketing","inbound","strategy","de","contentmarketing","rstats","contentstrategy","business","data","textmining","datascience","research","seo","amp","socialmedia","digitalmarketing","blog","en","website","ai","digital","datamining","la","social","intelligence","socialmediamarketing","el","smm","media","growthhacking","analytics","hubspot","create","businessintelligence","marketingstrategy","learn","bigdata","leads","mktg","article","read","text","b2b","para","socialselling","online","make","marketingdigital","sales","time","tips","free","google","le","guide","tu","mining","post","learning","pour","rt","analysis","check","great","brand","machinelearning","work","es","find","video","dont","les","people","web","python","top","datastorytelling","build","leadgeneration","search","bi","lead","writing","tools","customers","part","à","con","sur","audience","creating","im","good","published","science","heres","strategies","nlp","team","ways","results","qué","marketers","una","email","twitter","job","design","today","socialnetworkanalysis","sejournal","des","youtube","del","las","big","join","building","important","businesses","los","effective","webinar","cómo","te","success","youre","machine","plan","keyword","customer","crm","instagram","sem","blogging","steps","comment","estrategia","software","traffic","improve","growth","company","votre","start","latest","platform","news","más","things","facebook","du","ecommerce","roi","outbound","world","process","scraping","successful","information","services","jobs","quality","follow","market","emailmarketing","trends","experience","linkedin","ideas","branding","network","sanscatégorie","se","key","management","day","selling","product","clients","site","dataanalytics","book","insights","technology","por","project","contentcreation","nlproc","une","companies","future","case","onlinemarketing","page","started","manager","service","iot","ppc","brands","share","vous","focus","simple","write","advertising","link","tech","automation","package","videos","week","whats","power","tool","podcast","startup","dataviz","hotels","easy","generation","making","working","love","understand","open","bulk","ux","statistics","community","approach","full","industry","hiring","year","drive","model","talk","grow","pas","articles","ml","clientes","resources","years","paper","entrepreneur","artificialintelligence","marketingtips","examples","based","develop","engagement","deeplearning","posts","click","lot","client","code","agency","watch","lo","user","nos","stratégie","creation","restaurants","live","deep","questions","startups","language","goals","bramhall","real","vos","apply","son","story","small","linbound","users","support","como","models","back","dans","campaign","boost","gt","knowledge","topic","increase","level","set","performance","ads","storytelling","und","expert","sobre","benefits","review","development","al","series","access","list","infographic","cursortek","si","avec","change","makes","register","understanding","provide","internet","money","attract","give","app","difference","target","visit","tactics","copywriting","system","impact","report","global","place","solutions","helps","reach","au","info","di","creative","study"],"freq":[108438,101146,66175,48142,46869,41545,37678,35336,31088,29924,29106,28788,28636,28021,24490,19447,19227,18114,18038,16984,15943,13416,13220,12742,12647,12338,11789,11615,11225,10978,10482,10251,10136,9891,9560,9520,9278,8972,8916,8505,8343,8331,8244,8115,7880,7726,7308,7150,7143,7062,6907,6890,6855,6851,6764,6574,6558,6407,6406,6384,6287,6099,5963,5955,5900,5749,5735,5723,5708,5672,5671,5650,5513,5477,5399,5345,5257,5226,5034,5012,4955,4880,4812,4803,4775,4764,4752,4746,4652,4566,4483,4475,4460,4369,4336,4223,4179,4101,4041,3976,3975,3965,3961,3913,3879,3877,3868,3857,3842,3828,3792,3741,3663,3647,3635,3595,3575,3548,3482,3410,3400,3389,3357,3345,3335,3312,3294,3288,3251,3224,3135,3134,3132,3120,3117,3108,3101,3070,3035,3012,2990,2982,2960,2956,2926,2926,2900,2888,2805,2775,2771,2761,2760,2759,2753,2739,2689,2669,2668,2663,2662,2649,2639,2625,2622,2604,2604,2581,2567,2557,2529,2527,2522,2520,2511,2502,2499,2471,2464,2459,2439,2429,2429,2426,2425,2422,2417,2405,2391,2369,2366,2352,2347,2334,2331,2317,2316,2307,2292,2285,2272,2270,2268,2268,2262,2257,2256,2249,2236,2210,2201,2194,2172,2171,2167,2164,2153,2145,2141,2130,2114,2107,2105,2104,2093,2085,2081,2061,2059,2044,2043,2034,2020,2011,1995,1995,1994,1985,1984,1969,1950,1948,1948,1947,1939,1932,1928,1917,1914,1913,1912,1912,1908,1903,1900,1894,1892,1881,1873,1862,1844,1840,1828,1825,1822,1822,1805,1804,1803,1802,1800,1791,1790,1787,1779,1771,1766,1764,1742,1732,1723,1711,1694,1688,1687,1676,1674,1659,1653,1651,1646,1645,1639,1636,1635,1631,1626,1618,1610,1609,1608,1606,1605,1605,1602,1602,1591,1589,1587,1586,1580,1579,1570,1564,1561,1557,1552,1550,1547,1543,1524,1508,1507,1506,1491,1489,1476,1473,1472,1470,1464,1461,1460,1458,1457,1453,1452,1450,1447,1438,1436,1429,1429],"fontFamily":"Segoe UI","fontWeight":"bold","color":"random-dark","minSize":0,"weightFactor":0.00165993470923477,"backgroundColor":"white","gridSize":0,"minRotation":-0.785398163397448,"maxRotation":0.785398163397448,"shuffle":true,"rotateRatio":0.4,"shape":"circle","ellipticity":0.65,"figBase64":null,"hover":null},"evals":[],"jsHooks":{"render":[{"code":"function(el,x){\n                        console.log(123);\n                        if(!iii){\n                          window.location.reload();\n                          iii = False;\n\n                        }\n  }","data":null}]}}</script>
+</div>
+</div>
+<div id="reddit-posts" class="section level2">
+<h2>Reddit posts</h2>
+<pre class="r"><code>reddit &lt;- fread(&quot;/run/media/knut/HD/datasets/data_science_engagement/reddit2.csv&quot;, select=c(&quot;discussion&quot;, &quot;comment&quot;, &quot;comments_number&quot;)) %&gt;% mutate(filename=&quot;ds_reddit&quot;)
+
+reddit_db &lt;- fread(&quot;/run/media/knut/HD/datasets/data_science_engagement/reddit_database.csv&quot;, select=c(&quot;title&quot;, &quot;num_comments&quot;, &quot;subreddit&quot;)) %&gt;% distinct.() %&gt;% rename(discussion=title, comments_number=num_comments, filename=subreddit)
+
+reddit &lt;- reddit %&gt;% bind_rows(reddit_db)
+
+reddit_quantile &lt;- distinct(reddit, discussion, comments_number, filename)
+
+reddit_quantile &lt;- reddit_quantile %&gt;% group_by(filename)%&gt;% mutate(quantile = ntile(comments_number, 10)) %&gt;% mutate(quantile=ifelse(quantile&gt;4, quantile, 4))
+
+reddit &lt;- reddit %&gt;% inner_join.(reddit_quantile)
+
+reddit_corpus &lt;- reddit %&gt;% distinct.(discussion, filename, quantile)
+
+reddit %&gt;% distinct.(discussion) %&gt;%  tidytext::unnest_tokens(&quot;word&quot;, &quot;discussion&quot;) %&gt;% count.(word, sort = T) %&gt;% top_n(500) %&gt;% filter.(word%in%quanteda::stopwords(source = &quot;smart&quot;)==F) %&gt;% rename(freq=n) %&gt;% wordcloud2::wordcloud2()</code></pre>
+<div id="htmlwidget-2" style="width:672px;height:480px;" class="wordcloud2 html-widget"></div>
+<script type="application/json" data-for="htmlwidget-2">{"x":{"word":["data","learning","machine","ai","science","question","deep","model","ml","statistics","analysis","neural","computer","analytics","python","time","dataset","regression","hiring","test","project","intelligence","artificial","amp","research","learn","google","good","scientist","image","models","networks","network","training","engineer","find","based","advice","free","code","work","tensorflow","online","problem","job","2","video","statistical","make","classification","text","detection","series","1","multiple","questions","software","algorithm","linear","datasets","analyst","career","cs","open","set","big","stats","simple","probability","top","paper","post","images","interview","engineering","variables","business","distribution","vision","variable","language","programming","sample","real","3","algorithms","start","resources","request","10","people","study","program","function","degree","recognition","understanding","level","create","pytorch","book","difference","source","object","world","build","error","tutorial","results","random","math","future","projects","system","size","keras","values","2020","5","papers","working","number","nlp","building","implementation","courses","part","web","game","reinforcement","year","human","school","senior","high","tool","experience","survey","discussion","testing","app","class","understand","search","made","masters","list","scientists","books","major","2019","train","large","feature","student","prediction","approach","state","cloud","university","information","ideas","tools","guide","finding","correlation","introduction","cnn","market","jobs","methods","library","design","gpu","logistic","method","graph","making","anova","multi","standard","college","field","bayesian","creating","features","change","industry","predict","problems","related","phd","news","processing","full","group","covid","systems","beginner","spss","remote","basic","needed","applications","suggestions","explain","input","type","read","platform","output","calculate","face","run","skills","applied","performance","19","website","development","2018","social","process","4","company","end","package","tips","facebook","loss","lstm","3d","years","knowledge","internship","services","started","small","tracking","review","database","art","gradient","clustering","accuracy","modeling","scale","power","point","coding","idea","theory","population","api","binary","confidence","blog","single","tech","life","easy","worth","ms","excel","matrix","sql","technology","convolutional","interesting","comparing","guys","sets","application","tests","trained","recommendations","amazon","variance","normal","ds","feedback","check","segmentation","important","optimization","visualization","decision","examples","improve","rate","inference","day","product","team","companies","effect","hypothesis","user","classifier","cross","live","long","report","general","gan","computing","means","article","videos","categorical","predicting","kaggle","step","average","interested","specific","microsoft","100","file","youtube","starting","transfer","reddit","solve","speech","adversarial","link","control","groups","things","marketing","plot","beginners","opencv","path","architecture","global","recommendation","thoughts","2017","scratch","generation","kind","aws","compare","programs","back","give"],"freq":[79669,51380,31141,24845,24682,15408,14165,13360,12646,11513,11113,11005,10643,10524,10151,10082,9668,9565,9539,9001,8699,8680,8349,8306,7748,7718,7682,7623,7190,7093,6738,6665,6599,6239,5644,5601,5570,5509,5500,5410,5232,5164,5134,5046,5040,4979,4918,4852,4710,4689,4609,4495,4460,4424,4356,4251,4228,4189,4184,4087,4079,3979,3940,3901,3901,3890,3884,3802,3768,3761,3699,3627,3593,3590,3586,3544,3543,3527,3502,3477,3467,3459,3449,3384,3294,3279,3276,3191,3151,3146,3140,3124,3113,3079,3076,3075,3066,3053,3051,3018,3001,2982,2958,2950,2949,2913,2888,2857,2822,2808,2760,2752,2745,2742,2727,2723,2709,2672,2634,2625,2597,2577,2570,2544,2531,2529,2529,2519,2511,2504,2501,2480,2476,2457,2429,2424,2417,2403,2389,2380,2370,2362,2334,2333,2312,2299,2271,2241,2228,2218,2214,2212,2196,2193,2176,2171,2165,2163,2154,2148,2144,2143,2133,2120,2111,2105,2064,2062,2062,2061,2050,2041,2034,2034,2027,2021,1988,1980,1976,1969,1964,1959,1953,1949,1949,1944,1920,1888,1887,1878,1875,1873,1865,1860,1859,1858,1836,1835,1824,1824,1821,1808,1800,1788,1780,1777,1769,1767,1764,1751,1736,1726,1717,1716,1715,1694,1694,1681,1676,1674,1668,1664,1662,1657,1650,1650,1649,1646,1640,1636,1635,1633,1632,1630,1629,1626,1616,1613,1605,1597,1595,1585,1583,1580,1577,1570,1567,1563,1560,1552,1543,1541,1535,1534,1530,1527,1523,1512,1512,1509,1498,1494,1487,1482,1477,1477,1473,1469,1469,1466,1463,1461,1456,1453,1450,1449,1447,1445,1439,1438,1432,1415,1408,1404,1404,1403,1398,1395,1392,1390,1389,1388,1376,1371,1360,1357,1356,1344,1341,1338,1333,1333,1329,1328,1324,1322,1320,1319,1319,1315,1309,1301,1296,1294,1294,1293,1288,1287,1287,1274,1270,1270,1269,1267,1267,1266,1265,1262,1260,1259,1258,1254,1252,1251,1251,1247,1244,1243,1243,1237,1237,1235,1235,1233,1233,1231,1227,1223],"fontFamily":"Segoe UI","fontWeight":"bold","color":"random-dark","minSize":0,"weightFactor":0.0022593480525675,"backgroundColor":"white","gridSize":0,"minRotation":-0.785398163397448,"maxRotation":0.785398163397448,"shuffle":true,"rotateRatio":0.4,"shape":"circle","ellipticity":0.65,"figBase64":null,"hover":null},"evals":[],"jsHooks":{"render":[{"code":"function(el,x){\n                        console.log(123);\n                        if(!iii){\n                          window.location.reload();\n                          iii = False;\n\n                        }\n  }","data":null}]}}</script>
+</div>
+<div id="hot-keywords" class="section level2">
+<h2>Hot keywords</h2>
+<pre class="r"><code>hk &lt;- openxlsx::read.xlsx(&quot;/run/media/knut/HD/datasets/data_science_engagement/hot_keywords.xlsx&quot;) %&gt;% filter(topic%in%c(&quot;science&quot;, &quot;technology&quot;, &quot;software&quot;, &quot;marketing&quot;)) %&gt;% select(topic, description, growth_clean, category) %&gt;% na.omit()</code></pre>
+<pre><code>## New names:
+## • `growth` -&gt; `growth...5`
+## • `growth` -&gt; `growth...9`</code></pre>
+<pre class="r"><code>hk_quantile &lt;- hk %&gt;% mutate(quantile = ntile(growth_clean, 10)) %&gt;% mutate(quantile=ifelse(quantile&gt;4, quantile, 4))</code></pre>
+</div>
+<div id="data-science-blog-posts" class="section level2">
+<h2>Data Science Blog posts</h2>
+<pre class="r"><code>blog &lt;- fread(&quot;/run/media/knut/HD/datasets/data_science_engagement/blog_scrape_distinct.csv&quot;)%&gt;% filter.(variable!=&quot;paragraphs&quot;) %&gt;% filter.(variable%in%c(&quot;author&quot;, &quot;claps&quot;, &quot;follower_count&quot;, &quot;title&quot;))
+
+blog$rownumber &lt;- rownames(blog)
+
+author &lt;- blog %&gt;% filter.(variable==&quot;author&quot;) %&gt;% distinct.(value, rownumber) %&gt;% mutate(record=rownumber)
+
+
+
+blog &lt;- blog %&gt;% left_join.(author, by=c(&quot;value&quot;=&quot;value&quot;, &quot;rownumber&quot;=&quot;rownumber&quot;))
+
+blog &lt;- blog %&gt;% fill(record, .direction = &quot;down&quot;)
+
+title &lt;- blog %&gt;% filter.(variable==&quot;title&quot;) %&gt;% distinct.(value, record) 
+title &lt;- title[!duplicated(title$record),]
+
+blog &lt;- blog %&gt;% filter.(record%in%title$record)
+
+blog$identifier &lt;- paste0(blog$variable, blog$record)
+blog &lt;- blog[!duplicated(blog$identifier),]
+
+claps &lt;- blog%&gt;% filter.(variable==&quot;claps&quot;)
+
+#some data wrangeling
+
+blog &lt;- blog %&gt;% filter.(record%in%claps$record)
+follower_count &lt;- blog%&gt;% filter.(variable==&quot;follower_count&quot;)
+blog &lt;- blog %&gt;% filter.(record%in%follower_count$record)
+
+
+blog &lt;- blog %&gt;% pivot_wider(names_from = c(variable), values_from = c(value))
+
+blog &lt;- blog %&gt;% distinct.(record, author) %&gt;% left_join.(blog %&gt;% distinct.(record, title))%&gt;% left_join.(blog %&gt;% distinct.(record, claps))%&gt;% left_join.(blog %&gt;% distinct.(record, follower_count)) %&gt;% na.omit() %&gt;% mutate(follower_count=str_replace(follower_count, &quot; Followers&quot;, &quot;&quot;))
+
+
+blog &lt;- openxlsx::read.xlsx(&quot;/run/media/knut/HD/datasets/data_science_engagement/blog.xlsx&quot;) 
+blog$follower_count &lt;- blog$follower_count %&gt;% as.numeric()
+blog$claps &lt;- blog$claps %&gt;% as.numeric()
+
+blog$engagement &lt;- blog$claps/blog$follower_count
+
+
+blog_quantile &lt;- blog %&gt;% mutate(quantile = ntile(engagement, 10)) %&gt;% mutate(quantile=ifelse(quantile&gt;4, quantile, 4))
+
+
+blog_quantile %&gt;%  tidytext::unnest_tokens(&quot;word&quot;, &quot;title&quot;) %&gt;% count.(word, sort = T) %&gt;% top_n(500) %&gt;% filter.(word%in%quanteda::stopwords(source = &quot;smart&quot;)==F) %&gt;% rename(freq=n) %&gt;% wordcloud2::wordcloud2()</code></pre>
+<div id="htmlwidget-3" style="width:672px;height:480px;" class="wordcloud2 html-widget"></div>
+<script type="application/json" data-for="htmlwidget-3">{"x":{"word":["data","learning","python","machine","science","ai","guide","analysis","model","networks","time","spark","code","ml","neural","regression","system","deep","design","graph","image","introduction","learn","models","pandas","project","scientists","sql","understanding","10","3","application","artificial","build","building","explained","optimization","projects","text","2022","art","based","causal","classification","graphs","methods","monitoring","nlp","plotly","programming","scratch","series","skills","started","visualization","work","5","6","algorithms","apache","api","app","beginners","cloud","complete","concepts","create","creating","dataset","development","features","function","generator","geospatial","google","great","inference","intelligence","interactive","interview","knowledge","lifecycle","linear","make","making","maps","matrix","patterns","performance","pytorch","read","recommendation","research","spotify","theory","thinking","tool","train","web","30","4","adversarial","algorithm","analyst","attention","aws","business","career","clean","cleaning","clustering","coding","dash","database","dataframes","datasets","dead","decision","deploy","developer","distributed","effects","efficiency","efficient","end","error","explainable","explore","face","feature","fixed","free","functions","game","generative","gpt","gradient","greppo","hands","hard","human","important","improve","introducing","i’ve","job","jupyter","keras","level","libraries","lines","long","math","medical","meets","memory","missing","mlops","months","network","operational","operations","part","pcbs","personal","pipelines","pitfalls","plan","predictions","prepare","primer","pro","processing","pyspark","quality","rain","rank","recognition","resources","rust","scripts","search","simple","simplified","software","solid","solution","solving","speed","state","statistical","step","streamlit","string","systems","technical","tensorflow","things","tips","top","training","trends","understand","validation","visual","warehouse","what’s","world","wrapped","write","writing","xai","1","1.18","100","1000","15","19","2008","2020","22","2d","3.11","3.2","3d","7","8","8k","9","a.k.a","ace","activation","add","advanced","agnostic","airline","amazing","amazon","analysts","analytical","analytics","anomaly","anthems","anti","applications","apply","approximators","architect","architectural","argo","arsenal","articles","associative","atmospheric","autocorrelation","automate","automated","automating","aversion","aviation","avoid","avoiding","baby","backpropagation","bam","bamboolib","basic","batch","battle","bayes","bear","beautiful","beginner’s","bfgs","bidirectional","big","big.art","bindings","biomedical","bit","blocks","books","boosting","brains","break","breakdown","brewing","bricks","bring","built","bundling","busy","byte","callbacks","cam","candidates","car","careers","casinos","causation","central","certification","challenges","challenging","character","chatbots","cheat","checking","checklist","chess","chicken","choose","choosing","class","classifier","client","climate","clusters","co2","cohen’s","collaborative","column","columns","combining","common","component","compositional","comprehensive","computer","computing","condone","confusion","consciousness","continue","continuous","conversation","conversion","convolutional","correct","correction","correctly","corrector","correlation","covariance","cox","crack","creation","creativity","credentials","creepiest","critical","crucial","cups","cursor","dagshub","dark","dashboards","databases","databrew","dataproc","day","days","debate","debt","debug","decoding","decomposition","deepnote","deepspeed","defects","degree","demo","density","deploying","deployment","descent","descriptors","designing","detailed","detecting","detection","devops","differential","dilemma","discovering","discovery","discrimination","disney’s","distinguish","diversity","documentation","doesn’t","don’t","drift","drinking","driving","dynamic","earlier","earth","easily","edible","effect","egg","eli5","ellee","embedding","embeddings","embryogeny","encoding","ending","engine","engineering","engineers","ensemble","ensembles","entity","environment","espresso"],"freq":[70,42,36,28,22,13,10,9,9,9,9,8,7,7,7,7,7,6,6,6,6,6,6,6,6,6,6,6,6,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"fontFamily":"Segoe UI","fontWeight":"bold","color":"random-dark","minSize":0,"weightFactor":2.57142857142857,"backgroundColor":"white","gridSize":0,"minRotation":-0.785398163397448,"maxRotation":0.785398163397448,"shuffle":true,"rotateRatio":0.4,"shape":"circle","ellipticity":0.65,"figBase64":null,"hover":null},"evals":[],"jsHooks":{"render":[{"code":"function(el,x){\n                        console.log(123);\n                        if(!iii){\n                          window.location.reload();\n                          iii = False;\n\n                        }\n  }","data":null}]}}</script>
+</div>
+<div id="ml-paper-social-shares" class="section level2">
+<h2>ML paper social shares</h2>
+<pre class="r"><code>papers &lt;- fread(&quot;/run/media/knut/HD/datasets/data_science_engagement/42papers.csv&quot;) %&gt;% bind_rows.(fread(&quot;/run/media/knut/HD/datasets/data_science_engagement/42papers2.csv&quot;)) %&gt;% distinct.(title, likes)
+
+papers2 &lt;- openxlsx::read.xlsx(&quot;/run/media/knut/HD/datasets/data_science_engagement/hot_ml_papers.xlsx&quot;) %&gt;% select(title=title2, shares) %&gt;% rename(likes=shares)
+papers2_quantile &lt;- papers2 %&gt;% mutate(quantile = ntile(likes, 6)) %&gt;% mutate(quantile=quantile+4) %&gt;% mutate(filename=&quot;papers_hot&quot;)
+
+papers_quantile &lt;- papers %&gt;% mutate(quantile = ntile(likes, 10)) %&gt;% mutate(quantile=ifelse(quantile&gt;4, quantile, 4)) %&gt;% mutate(filename=&quot;papers&quot;) %&gt;% bind_rows(papers2_quantile)
+
+
+papers_quantile %&gt;%  tidytext::unnest_tokens(&quot;word&quot;, &quot;title&quot;) %&gt;% count.(word, sort = T) %&gt;% top_n(500) %&gt;% filter.(word%in%quanteda::stopwords(source = &quot;smart&quot;)==F) %&gt;% rename(freq=n) %&gt;% wordcloud2::wordcloud2()</code></pre>
+<div id="htmlwidget-4" style="width:672px;height:480px;" class="wordcloud2 html-widget"></div>
+<script type="application/json" data-for="htmlwidget-4">{"x":{"word":["learning","quantum","neural","based","deep","networks","data","models","model","multi","detection","machine","network","language","image","time","analysis","graph","high","systems","theory","reinforcement","efficient","training","approach","generation","supervised","optimization","classification","survey","large","3d","dark","scale","estimation","text","dynamics","segmentation","adversarial","recognition","space","framework","matter","object","black","study","field","system","prediction","information","energy","visual","robust","domain","modeling","attention","control","end","human","inference","low","representation","dimensional","spin","transformer","search","structure","generative","state","fast","representations","speech","bayesian","knowledge","unsupervised","local","2","convolutional","aware","covid","single","driven","methods","semantic","shot","physics","19","free","transfer","linear","point","real","video","images","optimal","phase","open","method","order","applications","design","topological","transformers","graphs","dynamic","pre","vision","ray","understanding","dataset","adaptive","stochastic","cross","magnetic","mass","ai","performance","algorithms","properties","algorithm","translation","type","effect","fields","star","variational","states","online","random","synthesis","wave","problem","evaluation","evolution","functions","1","improving","resolution","causal","gradient","level","natural","gravitational","task","hole","distribution","case","long","sparse","active","temporal","effects","light","reconstruction","contrastive","optical","function","review","application","binary","computing","simulation","social","generalization","density","galaxy","stars","global","geometry","gravity","feature","problems","flow","general","impact","imaging","power","multiple","uncertainty","3","automatic","privacy","view","memory","hierarchical","semi","error","molecular","embeddings","equations","series","simple","complex","finite","cloud","surface","radio","group","galaxies","simulations","groups","formation","matrix","induced","classical","sequence","generalized","regression","selection","bias","discovery","noise","solar","source","federated","spectral","attacks","constraints","challenges","processing","ii","clustering","transport","continuous","motion","face","differential","equation","robustness","spaces","electron","entropy","identification","super","universal","entanglement","features","artificial","cluster","effective","lattice","body","gaussian","research","cosmic","world","processes","theorem","architecture","interaction","depth","evidence","perspective","measurement","policy","spatial","symmetry","hybrid","interactions","nonlinear","scalable","quality","sampling","structures","action","dynamical","computer","probabilistic","complexity","embedding","stellar","adaptation","edge","transition","_2","code","geometric","holes","medical","extraction","localization","loss","agent","fine","meta","thermal","neutron","science","computational","mapping","augmentation","automated","question","intelligence","testing","guided","latent","distributed","reasoning","physical","tracking","computation","process","shape","small","particle","communication","exploring","improved","tasks","measurements","trained","higher","observations","pose","statistical","benchmark","diffusion","software","brain","implicit","label","cosmological","role","context","matching","class","detecting","retrieval","vector","forecasting","tensor","emission","multimodal","dual","predicting","scaling","bert","discrete","early","event","temperature","enhanced","evaluating","scene","double","fusion","strong","autonomous","bounds","clusters","conditional","inverse","approximation","gan","audio","neutrino","recurrent","accurate","anomaly","empirical","mixed","set","solutions","convergence","dependent","future","parallel","risk","answering","superconducting","robot","blockchain","compact","datasets","objects","production","waves","joint","algebras","games","invariant","maps","metal","results","style","materials","unified","decision","differentiable","distance","exploration","manifolds","measuring","stability","theories","word","modelling","frequency","modal","relation","dense","test","carlo","galactic","massive","sample","ultra","correlation","direct","line","tuning","variable","boundary","monte","interpretable","noisy","planning","predictive","engineering","kernel","behavior","extended","flows","rank","graphene","preserving","structured","tree","observation","spectrum"],"freq":[6028,2700,2563,2338,2226,2145,1886,1656,1538,1295,1290,1240,1234,1076,1075,1023,1022,959,894,875,874,838,780,769,738,691,681,678,674,671,663,662,635,628,620,615,596,593,588,585,581,577,560,559,553,551,547,543,542,535,526,526,524,519,502,501,494,492,490,486,483,483,481,481,478,476,475,467,463,458,456,448,446,446,438,435,434,430,427,425,425,420,419,416,416,414,412,412,412,408,402,402,402,400,400,399,397,396,392,388,388,387,387,385,384,384,382,379,376,374,371,359,357,357,354,351,351,344,341,340,339,335,333,332,329,329,320,319,318,315,315,314,313,313,312,311,311,311,307,306,304,304,302,300,299,296,295,295,295,294,294,292,292,291,289,288,285,284,283,283,283,282,282,279,277,277,277,276,275,274,272,269,265,265,261,260,260,257,256,255,255,252,252,249,248,248,245,245,243,243,243,243,242,240,239,239,238,237,234,234,233,231,231,228,227,226,224,224,224,223,223,223,222,222,221,221,220,220,219,219,218,217,217,216,216,215,214,214,214,214,213,213,212,212,211,209,209,207,206,206,206,205,205,204,203,203,202,202,201,201,200,200,200,199,199,199,199,198,198,198,198,197,197,197,196,196,195,195,194,194,194,193,193,192,191,191,191,191,191,189,189,189,188,188,188,188,187,187,185,185,184,184,184,183,183,182,182,181,181,180,180,179,178,178,178,177,176,176,176,176,175,175,174,174,174,174,173,173,173,172,172,172,170,170,169,169,168,168,168,168,167,166,165,165,164,164,164,163,163,163,162,162,161,161,161,159,159,159,158,158,158,158,157,156,155,154,154,154,153,153,153,153,153,153,152,152,152,152,152,151,151,150,149,149,149,149,149,149,148,147,147,147,147,147,147,147,146,146,145,145,145,145,145,145,145,145,145,144,143,143,143,142,142,141,141,141,141,141,140,140,140,140,140,139,139,138,138,138,138,137,137,136,136,136,136,135,135,135,135,134,134],"fontFamily":"Segoe UI","fontWeight":"bold","color":"random-dark","minSize":0,"weightFactor":0.0298606502986065,"backgroundColor":"white","gridSize":0,"minRotation":-0.785398163397448,"maxRotation":0.785398163397448,"shuffle":true,"rotateRatio":0.4,"shape":"circle","ellipticity":0.65,"figBase64":null,"hover":null},"evals":[],"jsHooks":{"render":[{"code":"function(el,x){\n                        console.log(123);\n                        if(!iii){\n                          window.location.reload();\n                          iii = False;\n\n                        }\n  }","data":null}]}}</script>
+</div>
+<div id="finish-it" class="section level2">
+<h2>Finish it</h2>
+<p>Well, kinda boring but now let’s throw it all together.</p>
+<pre class="r"><code>tweets &lt;- tweet_quantiles %&gt;% select(filename=filenames, text=tweet, quantile)
+reddit_corpus &lt;- reddit_corpus %&gt;% select(filename, text=discussion, quantile)
+hot_keywords &lt;- hk_quantile %&gt;% select(filename=topic, text=description, quantile)
+blog_quantile &lt;- blog_quantile %&gt;% mutate(filename=&quot;blog&quot;) %&gt;% select(filename, text=title, quantile)
+papers_quantile &lt;- papers_quantile %&gt;% mutate(filename=&quot;papers&quot;) %&gt;% select(filename, text=title, quantile)
+
+content_intelligence_corpus &lt;- bind_rows.(tweets, reddit_corpus, hot_keywords, blog_quantile, papers_quantile)
+
+
+nrow(content_intelligence_corpus) %&gt;% english::as.english() %&gt;% paste(&quot;records&quot;)</code></pre>
+<pre><code>## [1] &quot;eight hundred seventy-five thousand nine hundred ninety records&quot;</code></pre>
+</div>
+</div>

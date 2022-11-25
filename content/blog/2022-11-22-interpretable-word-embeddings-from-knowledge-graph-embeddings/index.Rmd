@@ -1,0 +1,199 @@
+---
+title: Interpretable Word Embeddings from knowledge graph embeddings
+author: Knut Jägersberg
+date: '2022-11-22'
+slug: []
+categories: []
+tags: []
+---
+
+
+# Interpretable Word Embeddings from knowledge graph embeddings
+
+A while ago, I created interpretable word embeddings using polar opposites (I used their jupyter notebook from here https://github.com/Sandipan99/POLAR) from wikidata5m knowledge graph embeddings (from here: https://graphvite.io/docs/latest/pretrained_model.html). It resulted in a gigantic file of pretrained embeddings which sort concepts along 700 semantic differentials, i.e. like good/bad. 
+However, the wikidata5m knowledge graph is huge. Roundabout 5 million concepts and 13 million spellings. A joined parquet file would properly take 100 GB of disk space. One way to make it usable with limited RAM is using databases. I could just use duckdb or arrow and tidytext together. I don't like the thought of using a huge file just to assign embeddings. Also lot's of the concepts in the knowledge graph are exotic, the tokens rarely attract human interest. Like specific fighter jet model spellings. 
+The appeal of this large graph is that it allows to create interpretable document embeddings and investigate corpora without the need for domain specific topic modeling, more concepts means more coverage.  
+All I want is that it is flexible enough to be used on real sentences, we can achieve that with a huge vocabulary or character n-grams.   
+I need to reduce the size to make it practical.  
+I had got inspired by radix.ai to reproject quantized fasttext embeddings into knowledge graph embeddings with an MLP before, this here seems like a persuasively valuable use case of that approach to try that out.  
+
+First step is to make the spaces mappable. For that we gotta create a subset of the knowledge graph embeddings which overlap with the learned terms from the fasttext embeddings (we can also expand that for select concepts). 
+Let's do that. 
+
+
+## Taking a peek at the embeddings  
+
+To exemplify, I'll grab an example concept and show how it is positioned.  
+
+```{r}
+pacman::p_load(tidytable, data.table, tidyverse, arrow, ggcharts, wordVectors, pbmcapply)
+
+
+#Some file preparations
+
+polar_embeddings <- arrow::read_parquet("/run/media/knut/HD/knut/Desktop/MLearningAlgoTests/data/polar/polar.parquet")
+polar_ids <- fread("/run/media/knut/HD/MLearningAlgoTests/data/polar/polar_id.csv")
+polar_embeddings$rowid <- polar_ids$id
+  
+entities <- fread("/run/media/knut/HD/MLearningAlgoTests/data/polar/entities.csv") %>% separate.(col = label, c("label2", "specification"), sep = "(", remove = F) %>% mutate.(label2=str_squish(label2))
+
+
+entities %>% mutate(label2=tolower(label2)) %>% filter.(str_detect(label2, "sadam hussain"))
+```
+
+
+So how is this guy positioned?  
+On the polar opposites scale, the numbers can be negative.  
+Note this system is not perfect, not all scores make sense.  
+It can be a good starting point for forming content hypotheses.  
+
+
+```{r}
+subject <- polar_embeddings %>% filter.(rowid==entities %>% mutate(label2=tolower(label2)) %>% filter.(str_detect(label2, "sadam hussain")) %>% pull(rowid))
+
+positioning_pos <- subject %>% t() %>% as.data.frame() %>% arrange(desc(V1))
+positioning_pos$variable <- rownames(positioning_pos)
+
+positioning_neg <- subject %>% t() %>% as.data.frame() %>% arrange(V1)
+positioning_neg$variable <- rownames(positioning_neg)
+
+
+show_me <- positioning_pos[1:20,] %>% bind_rows.(positioning_neg[1:20,]) %>% filter.(variable%in%c("sheep_wolf", "girl_men", "democratic_despotic", "pass_play", "confusion_peace", "bullet_safe"))
+
+ggcharts::lollipop_chart(show_me, x = variable, y = V1)
+```
+
+## Getting the subset of directly mappable concepts 
+
+I got some quantized fasttext embeddings from here (https://zenodo.org/record/3629537).   They're just 1.2 gb, 2 million words.  
+It is clear we need automated disambiguation:  
+
+```{r}
+library(fastrtext)
+
+model <- fastrtext::load_model("/home/knut/nlpaug/embs/cc.en.300.ftz")
+
+
+words <- data.table(words=get_dictionary(model)) %>% filter(words%in%quanteda::stopwords(source = "smart")==F) %>% filter(nchar(words)>3)
+
+entity_overlap <- entities %>% mutate.(words=tolower(label2)) %>%inner_join.(words) 
+
+entity_overlap %>% head()
+```
+
+
+
+We also have the descriptions of those entities from wikipedia. We can use the pretrained embeddings to disambiguate among those, which we'll use as a quick and dirty way to disambiguate.  
+
+```{r}
+library(readr)
+wikidata5m_text <- read_delim("/run/media/knut/HD/knut/Desktop/MLearningAlgoTests/data/wikidata5m_text.csv", 
+    delim = "\t", escape_double = FALSE, 
+    trim_ws = TRUE, col_names = FALSE) %>% rename(wikientity=X1, description=X2) %>% filter.(wikientity%in%unique(entity_overlap$wikientity))
+
+
+wikidata5m_text %>% head()
+
+```
+
+Let's test disambiguation via the fasttext model document embeddings:  
+
+```{r}
+
+test_entities <- entity_overlap %>% filter.(words=="communication")
+
+entity_candidate_descr_embs <- get_sentence_representation(model, wikidata5m_text %>% filter.(wikientity%in%test_entities$wikientity) %>% pull(description))
+entity_candidate_descr_embs <- entity_candidate_descr_embs %>% as.VectorSpaceModel()
+rownames(entity_candidate_descr_embs) <- wikidata5m_text %>% filter.(wikientity%in%test_entities$wikientity) %>% distinct(wikientity) %>% pull(wikientity)
+
+
+
+overlapping_words <- unique(entity_overlap$words)
+fasttext_emb_test <- fastrtext::get_word_vectors(model, words = "communication")
+fasttext_emb_test <- fasttext_emb_test %>% as.VectorSpaceModel()
+rownames(fasttext_emb_test) <- "communication"
+
+wordVectors::closest_to(entity_candidate_descr_embs, fasttext_emb_test) %>% rename(wikientity=word) %>% inner_join.(entity_overlap %>% distinct(wikientity, words)) %>% arrange(desc(`similarity to fasttext_emb_test`))
+```
+
+The description of the most similar concept is: 
+
+```{r}
+wikidata5m_text %>% filter.(wikientity=="Q11024") %>% pull(description)
+```
+
+In this instance, this simple approach worked. Let's proceed with it.  
+
+```{r}
+
+# overlapping_words <- unique(entity_overlap$words)
+# 
+# 
+# rm(polar_embeddings, entities)
+# gc()
+# 
+# pacman::p_load(tidytable, data.table, tidyverse, arrow, ggcharts, wordVectors, pbmcapply, fastrtext)
+# 
+# fastSave::load.lbzip2("/home/knut/Desktop/image.RDataFS", n.cores = 15)
+# 
+# disambiguate <- function(X){
+#   word <- X
+#   model <- fastrtext::load_model("/home/knut/nlpaug/embs/cc.en.300.ftz")
+#     test_entities <- entity_overlap %>% filter.(words==word)
+# 
+#   entity_candidate_descr_embs <- fastrtext::get_sentence_representation(model, wikidata5m_text %>% filter.(wikientity%in%test_entities$wikientity) %>% pull(description))
+#   entity_candidate_descr_embs <- entity_candidate_descr_embs %>% as.VectorSpaceModel()
+#   rownames(entity_candidate_descr_embs) <- wikidata5m_text %>% filter.(wikientity%in%test_entities$wikientity) %>% distinct(wikientity) %>% pull(wikientity)
+#   
+#   
+#   
+# 
+#   fasttext_emb_test <- fastrtext::get_word_vectors(model, words = word)
+#   fasttext_emb_test <- fasttext_emb_test %>% as.VectorSpaceModel()
+#   rownames(fasttext_emb_test) <- word
+#   
+#   look_up <- function(){
+#     ent <- wordVectors::closest_to(entity_candidate_descr_embs, fasttext_emb_test) %>% rename(wikientity=word) %>% inner_join.(entity_overlap %>% distinct(wikientity, words)) %>% arrange(desc(`similarity to fasttext_emb_test`)) %>% as.data.frame() %>% pull(wikientity)
+#     ent[1]}
+#   safe_lookup <- possibly(look_up, NA)
+#   
+#   
+#   disambiguated_entity <- safe_lookup()
+#   rm(model, fasttext_emb_test, entity_candidate_descr_embs, test_entities)
+#   gc()
+#   disambiguated_entity <- data.table(disambiguated_entity=disambiguated_entity, words=word)
+#   disambiguated_entity
+# 
+# }
+# 
+# #options(future.fork.enable = TRUE)
+# 
+# #library(furrr)
+# 
+# #plan(multicore, workers=12)
+# 
+# #results <- future_map_dfr(.x = overlapping_words, .f = disambiguate, .progress = T)
+# 
+# results <- pbmcapply::pbmcmapply(X = overlapping_words, FUN = disambiguate, mc.cores = 15L) # works cleaner with forking
+# 
+# results2 <- results %>% t() %>% as.data.frame()
+
+results2 <- fread("/run/media/knut/HD/knut/Desktop/MLearningAlgoTests/data/polar/polar_quantized_fasttext_entities.csv")
+
+
+
+```
+
+This should be almost it. Only gotta grab the knowledge graph embedddings.  
+
+```{r}
+
+results2 <- results2 %>% rename(wikientity=disambiguated_entity) %>% inner_join.(entities %>% distinct.(wikientity, rowid)) %>% inner_join.(polar_embeddings, by=c("rowid"="rowid"))
+
+```
+
+
+
+You can find the embeddings (130k records) on Huggingface:  
+
+https://huggingface.co/datasets/KnutJaegersberg/interpretable_word_embeddings

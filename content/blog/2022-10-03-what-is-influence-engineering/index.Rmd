@@ -1,0 +1,39 @@
+---
+title: 'What is influence engineering? '
+author: Knut Jägersberg
+date: '2022-10-03'
+slug: []
+categories:
+  - StratCom
+tags: []
+---
+
+
+# What is influence engineering? 
+Influence engineering refers to the practice of narrating strategic communication backed by content intelligence, applied influence science, design thinking and systems thinking. Influence engineering is an engineering practice, because the design and craft of embedded StratCom is akin to building and maintaining a machine. Influence engineering is an application of narrative intelligence. Narrative intelligence refers to the capacity of solving problems by telling stories. Influence engineering always has the aim of some form of social engineering, though the term has become too exclusively associated with cybersecurity problems. The piecemeal approach to social engineering described by Karl Popper seeks stepwise removing of fightable injustices one by one through experiments that do not have to involve society as a whole to become effective over time. 
+
+
+## How does influence engineering differ from information operations? 
+OSINT specialists might conflate the term influence engineering with information ops, which usually refers to orchestrated social media propaganda of both bots and humans to push a certain political agenda. The difference between the two is akin to that of a nuclear weapon and a bio weapon: Whilst influence ops (and influence marketing) seek to change the narrative by taking a higher tempo than the rest and blasting away the antagonist discourse, influence engineering seeks to disrupt the current narrative by surgical interventions to start a few key chain reactions which reinforce fractal dissonance, often exploiting weak signals. It is like paying a chef for putting a virus into the airport-cafetaria cookies of instead of spraying it with a clearly visible delivery vehicle from the sky.
+In narrative decision making, the relative tempo of narrators determines their influence on the overall course of the drama.  
+Influence engineering relies more on subtle forms of narrative warfare and PsyOps instead on those of overt information warfare. Both have their use cases.  
+
+
+
+## How does influence engineering differ from personal branding, PR, inbound marketing and influence marketing? 
+Whilst influence marketing and personal branding seek to go with the narrative flow for reach, brand equity and 'positivity', influence engineering seeks to disrupt it for the sake of sustainable communication.  
+PR on the other hand completely lacks the vulnerable openness required for full ecosystem communications, which include brand threatening dialogue (for which way too many entities lack maturity).  
+Inbound marketing ultimately is a form of copywriting and brand storytelling. Whilst those should be utilized by influence engineering, influence engineering is more about two-way co-narrating than selling ideas. Form-free personal branding is enough for successful influence communications, the content-form helps, yet it is the sujet (the energetic web of sounds, movement and ideas induced by the delivered story) which matters for effective delivery. Whilst brand storytelling and copywriting are flat and cosy, influence engineering is deep and creepy. Before the digitally mediated annihiliation of inert creativity, there was a time people just came up with hacky, improvised stories, only to make a point to their offspring. Some people wrongfully use this art through fabricated stories for engagement, increasing entropy. Influence engineering is ethical cleansing for syntropy.  
+
+
+## Under what assumptions and principles does influence engineering operate?  
+Social media is a polyperspective narrative. Polyperspectivity gives rise to the (sometimes implicit) argument structure of all social media discourse. Influence engineering requires a balance between inside-out and outside-in inputs, but fundamentally the operation is inside-out, because it is always about (re)positioning of people in a cognitive social graph. Argumentation, belief systems and brand story have precedence over actuality in designed (contrasting merely opportune) influence operations.  
+Influence engineering frames the discourse as semi-integrated cognitive multi-agent space, giving rise to collective intelligence as the emergent and transitory common goals among the pandemonium of claims and attention. Psychology, social network analysis, content intelligence and memetics afford forsightful communications that inform the narrative by developing a long term perspective.  
+
+
+
+# Conclusion    
+Influence engineering is a design practice for ecosystem- and human-centric sustainable communication. The utilization of practices from narrative warfare might sound off, but once you digged below the surface of the implications of that way of influence, you can see its bright side.  
+
+
+“The greatest victory is that which requires no battle.” Sun Tzu  

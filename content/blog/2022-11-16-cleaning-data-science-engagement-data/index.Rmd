@@ -1,0 +1,170 @@
+---
+title: Cleaning data science engagement data
+author: Knut Jägersberg
+date: '2022-11-16'
+slug: []
+categories:
+  - Data Science
+tags: []
+---
+
+
+# Content Intelligence headline engagement 
+
+In this post, I'll mix together a bunch of headlines datasets I discovered with engagement and make it suitable for predicting engagement level from text for the domain of content intelligence.  
+
+## Data sources
+
+- tweets on data science  
+- reddit posts  
+- search keywords  
+- blog posts  
+- ML paper social shares  
+ 
+
+### Content Intelligence Tweets 
+
+These tweets come from various topics from data science and content marketing. 
+
+```{r}
+pacman::p_load(tidyverse, tidytable, data.table, gtools)
+
+source("/home/knut/Documents/clean.R")
+setwd("/run/media/knut/HD/datasets/data_science_engagement/tweets/")
+
+files <- list.files("/run/media/knut/HD/datasets/data_science_engagement/tweets/", pattern = "*.csv") %>% set_names()
+
+tweets <- files %>% 
+    map_df(.f = fread, select = c("tweet", "username", "replies_count", "retweets_count", "likes_count"), .id ="filenames") %>% mutate(tweet=clean(tweet, removeTwitter = T, removeURL = T), replies_count=ifelse(replies_count<3, 0, replies_count)) 
+
+
+tweets$engagement <- tweets$likes_count + tweets$replies_count*26.35+tweets$retweets_count*2.79 %>% as.numeric()
+
+#look at quantiles larger than 0.5 per group, where engagement tends to kick in
+
+tweet_quantiles <- tweets %>% filter(!is.na(engagement)) %>% group_by(filenames) %>% mutate(quantile = ntile(engagement, 10)) %>% mutate(quantile=ifelse(quantile>4, quantile, 4)) %>% ungroup()
+
+tweet_quantiles %>% tidytext::unnest_tokens("word", "tweet") %>% count.(word, sort = T) %>% top_n(500) %>% filter.(word%in%quanteda::stopwords(source = "smart")==F) %>% rename(freq=n) %>% wordcloud2::wordcloud2()
+```
+
+
+
+## Reddit posts  
+
+
+```{r}
+reddit <- fread("/run/media/knut/HD/datasets/data_science_engagement/reddit2.csv", select=c("discussion", "comment", "comments_number")) %>% mutate(filename="ds_reddit")
+
+reddit_db <- fread("/run/media/knut/HD/datasets/data_science_engagement/reddit_database.csv", select=c("title", "num_comments", "subreddit")) %>% distinct.() %>% rename(discussion=title, comments_number=num_comments, filename=subreddit)
+
+reddit <- reddit %>% bind_rows(reddit_db)
+
+reddit_quantile <- distinct(reddit, discussion, comments_number, filename)
+
+reddit_quantile <- reddit_quantile %>% group_by(filename)%>% mutate(quantile = ntile(comments_number, 10)) %>% mutate(quantile=ifelse(quantile>4, quantile, 4))
+
+reddit <- reddit %>% inner_join.(reddit_quantile)
+
+reddit_corpus <- reddit %>% distinct.(discussion, filename, quantile)
+
+reddit %>% distinct.(discussion) %>%  tidytext::unnest_tokens("word", "discussion") %>% count.(word, sort = T) %>% top_n(500) %>% filter.(word%in%quanteda::stopwords(source = "smart")==F) %>% rename(freq=n) %>% wordcloud2::wordcloud2()
+```
+
+
+## Hot keywords  
+```{r}
+hk <- openxlsx::read.xlsx("/run/media/knut/HD/datasets/data_science_engagement/hot_keywords.xlsx") %>% filter(topic%in%c("science", "technology", "software", "marketing")) %>% select(topic, description, growth_clean, category) %>% na.omit()
+
+
+hk_quantile <- hk %>% mutate(quantile = ntile(growth_clean, 10)) %>% mutate(quantile=ifelse(quantile>4, quantile, 4))
+
+```
+
+
+
+## Data Science Blog posts  
+
+```{r}
+blog <- fread("/run/media/knut/HD/datasets/data_science_engagement/blog_scrape_distinct.csv")%>% filter.(variable!="paragraphs") %>% filter.(variable%in%c("author", "claps", "follower_count", "title"))
+
+blog$rownumber <- rownames(blog)
+
+author <- blog %>% filter.(variable=="author") %>% distinct.(value, rownumber) %>% mutate(record=rownumber)
+
+
+
+blog <- blog %>% left_join.(author, by=c("value"="value", "rownumber"="rownumber"))
+
+blog <- blog %>% fill(record, .direction = "down")
+
+title <- blog %>% filter.(variable=="title") %>% distinct.(value, record) 
+title <- title[!duplicated(title$record),]
+
+blog <- blog %>% filter.(record%in%title$record)
+
+blog$identifier <- paste0(blog$variable, blog$record)
+blog <- blog[!duplicated(blog$identifier),]
+
+claps <- blog%>% filter.(variable=="claps")
+
+#some data wrangeling
+
+blog <- blog %>% filter.(record%in%claps$record)
+follower_count <- blog%>% filter.(variable=="follower_count")
+blog <- blog %>% filter.(record%in%follower_count$record)
+
+
+blog <- blog %>% pivot_wider(names_from = c(variable), values_from = c(value))
+
+blog <- blog %>% distinct.(record, author) %>% left_join.(blog %>% distinct.(record, title))%>% left_join.(blog %>% distinct.(record, claps))%>% left_join.(blog %>% distinct.(record, follower_count)) %>% na.omit() %>% mutate(follower_count=str_replace(follower_count, " Followers", ""))
+
+
+blog <- openxlsx::read.xlsx("/run/media/knut/HD/datasets/data_science_engagement/blog.xlsx") 
+blog$follower_count <- blog$follower_count %>% as.numeric()
+blog$claps <- blog$claps %>% as.numeric()
+
+blog$engagement <- blog$claps/blog$follower_count
+
+
+blog_quantile <- blog %>% mutate(quantile = ntile(engagement, 10)) %>% mutate(quantile=ifelse(quantile>4, quantile, 4))
+
+
+blog_quantile %>%  tidytext::unnest_tokens("word", "title") %>% count.(word, sort = T) %>% top_n(500) %>% filter.(word%in%quanteda::stopwords(source = "smart")==F) %>% rename(freq=n) %>% wordcloud2::wordcloud2()
+```
+
+
+
+## ML paper social shares 
+
+```{r}
+papers <- fread("/run/media/knut/HD/datasets/data_science_engagement/42papers.csv") %>% bind_rows.(fread("/run/media/knut/HD/datasets/data_science_engagement/42papers2.csv")) %>% distinct.(title, likes)
+
+papers2 <- openxlsx::read.xlsx("/run/media/knut/HD/datasets/data_science_engagement/hot_ml_papers.xlsx") %>% select(title=title2, shares) %>% rename(likes=shares)
+papers2_quantile <- papers2 %>% mutate(quantile = ntile(likes, 6)) %>% mutate(quantile=quantile+4) %>% mutate(filename="papers_hot")
+
+papers_quantile <- papers %>% mutate(quantile = ntile(likes, 10)) %>% mutate(quantile=ifelse(quantile>4, quantile, 4)) %>% mutate(filename="papers") %>% bind_rows(papers2_quantile)
+
+
+papers_quantile %>%  tidytext::unnest_tokens("word", "title") %>% count.(word, sort = T) %>% top_n(500) %>% filter.(word%in%quanteda::stopwords(source = "smart")==F) %>% rename(freq=n) %>% wordcloud2::wordcloud2()
+
+```
+
+
+
+## Finish it  
+
+Well, kinda boring but now let's throw it all together. 
+
+```{r}
+tweets <- tweet_quantiles %>% select(filename=filenames, text=tweet, quantile)
+reddit_corpus <- reddit_corpus %>% select(filename, text=discussion, quantile)
+hot_keywords <- hk_quantile %>% select(filename=topic, text=description, quantile)
+blog_quantile <- blog_quantile %>% mutate(filename="blog") %>% select(filename, text=title, quantile)
+papers_quantile <- papers_quantile %>% mutate(filename="papers") %>% select(filename, text=title, quantile)
+
+content_intelligence_corpus <- bind_rows.(tweets, reddit_corpus, hot_keywords, blog_quantile, papers_quantile)
+
+
+nrow(content_intelligence_corpus) %>% english::as.english() %>% paste("records")
+```
+

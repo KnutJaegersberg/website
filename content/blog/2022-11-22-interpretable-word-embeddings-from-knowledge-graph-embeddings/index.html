@@ -1,0 +1,203 @@
+---
+title: Interpretable Word Embeddings from knowledge graph embeddings
+author: Knut Jägersberg
+date: '2022-11-22'
+slug: []
+categories: []
+tags: []
+---
+
+
+
+<div id="interpretable-word-embeddings-from-knowledge-graph-embeddings" class="section level1">
+<h1>Interpretable Word Embeddings from knowledge graph embeddings</h1>
+<p>A while ago, I created interpretable word embeddings using polar opposites (I used their jupyter notebook from here <a href="https://github.com/Sandipan99/POLAR" class="uri">https://github.com/Sandipan99/POLAR</a>) from wikidata5m knowledge graph embeddings (from here: <a href="https://graphvite.io/docs/latest/pretrained_model.html" class="uri">https://graphvite.io/docs/latest/pretrained_model.html</a>). It resulted in a gigantic file of pretrained embeddings which sort concepts along 700 semantic differentials, i.e. like good/bad.
+However, the wikidata5m knowledge graph is huge. Roundabout 5 million concepts and 13 million spellings. A joined parquet file would properly take 100 GB of disk space. One way to make it usable with limited RAM is using databases. I could just use duckdb or arrow and tidytext together. I don’t like the thought of using a huge file just to assign embeddings. Also lot’s of the concepts in the knowledge graph are exotic, the tokens rarely attract human interest. Like specific fighter jet model spellings.
+The appeal of this large graph is that it allows to create interpretable document embeddings and investigate corpora without the need for domain specific topic modeling, more concepts means more coverage.<br />
+All I want is that it is flexible enough to be used on real sentences, we can achieve that with a huge vocabulary or character n-grams.<br />
+I need to reduce the size to make it practical.<br />
+I had got inspired by radix.ai to reproject quantized fasttext embeddings into knowledge graph embeddings with an MLP before, this here seems like a persuasively valuable use case of that approach to try that out.</p>
+<p>First step is to make the spaces mappable. For that we gotta create a subset of the knowledge graph embeddings which overlap with the learned terms from the fasttext embeddings (we can also expand that for select concepts).
+Let’s do that.</p>
+<div id="taking-a-peek-at-the-embeddings" class="section level2">
+<h2>Taking a peek at the embeddings</h2>
+<p>To exemplify, I’ll grab an example concept and show how it is positioned.</p>
+<pre class="r"><code>pacman::p_load(tidytable, data.table, tidyverse, arrow, ggcharts, wordVectors, pbmcapply)
+
+
+#Some file preparations
+
+polar_embeddings &lt;- arrow::read_parquet(&quot;/run/media/knut/HD/knut/Desktop/MLearningAlgoTests/data/polar/polar.parquet&quot;)
+polar_ids &lt;- fread(&quot;/run/media/knut/HD/MLearningAlgoTests/data/polar/polar_id.csv&quot;)
+polar_embeddings$rowid &lt;- polar_ids$id
+  
+entities &lt;- fread(&quot;/run/media/knut/HD/MLearningAlgoTests/data/polar/entities.csv&quot;) %&gt;% separate.(col = label, c(&quot;label2&quot;, &quot;specification&quot;), sep = &quot;(&quot;, remove = F) %&gt;% mutate.(label2=str_squish(label2))
+
+
+entities %&gt;% mutate(label2=tolower(label2)) %&gt;% filter.(str_detect(label2, &quot;sadam hussain&quot;))</code></pre>
+<pre><code>## # A tidytable: 1 × 5
+##   rowid wikientity label         label2        specification
+##   &lt;dbl&gt; &lt;chr&gt;      &lt;chr&gt;         &lt;chr&gt;         &lt;chr&gt;        
+## 1 25635 Q1316      sadam hussain sadam hussain &lt;NA&gt;</code></pre>
+<p>So how is this guy positioned?<br />
+On the polar opposites scale, the numbers can be negative.<br />
+Note this system is not perfect, not all scores make sense.<br />
+It can be a good starting point for forming content hypotheses.</p>
+<pre class="r"><code>subject &lt;- polar_embeddings %&gt;% filter.(rowid==entities %&gt;% mutate(label2=tolower(label2)) %&gt;% filter.(str_detect(label2, &quot;sadam hussain&quot;)) %&gt;% pull(rowid))
+
+positioning_pos &lt;- subject %&gt;% t() %&gt;% as.data.frame() %&gt;% arrange(desc(V1))
+positioning_pos$variable &lt;- rownames(positioning_pos)
+
+positioning_neg &lt;- subject %&gt;% t() %&gt;% as.data.frame() %&gt;% arrange(V1)
+positioning_neg$variable &lt;- rownames(positioning_neg)
+
+
+show_me &lt;- positioning_pos[1:20,] %&gt;% bind_rows.(positioning_neg[1:20,]) %&gt;% filter.(variable%in%c(&quot;sheep_wolf&quot;, &quot;girl_men&quot;, &quot;democratic_despotic&quot;, &quot;pass_play&quot;, &quot;confusion_peace&quot;, &quot;bullet_safe&quot;))
+
+ggcharts::lollipop_chart(show_me, x = variable, y = V1)</code></pre>
+<p><img src="{{< blogdown/postref >}}index_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+</div>
+<div id="getting-the-subset-of-directly-mappable-concepts" class="section level2">
+<h2>Getting the subset of directly mappable concepts</h2>
+<p>I got some quantized fasttext embeddings from here (<a href="https://zenodo.org/record/3629537" class="uri">https://zenodo.org/record/3629537</a>). They’re just 1.2 gb, 2 million words.<br />
+It is clear we need automated disambiguation:</p>
+<pre class="r"><code>library(fastrtext)
+
+model &lt;- fastrtext::load_model(&quot;/home/knut/nlpaug/embs/cc.en.300.ftz&quot;)
+
+
+words &lt;- data.table(words=get_dictionary(model)) %&gt;% filter(words%in%quanteda::stopwords(source = &quot;smart&quot;)==F) %&gt;% filter(nchar(words)&gt;3)
+
+entity_overlap &lt;- entities %&gt;% mutate.(words=tolower(label2)) %&gt;%inner_join.(words) 
+
+entity_overlap %&gt;% head()</code></pre>
+<pre><code>## # A tidytable: 6 × 6
+##    rowid wikientity label                      label2 specification        words
+##    &lt;dbl&gt; &lt;chr&gt;      &lt;chr&gt;                      &lt;chr&gt;  &lt;chr&gt;                &lt;chr&gt;
+## 1  38101 Q3283450   time (third day album)     time   third day album)     time 
+## 2  68619 Q385768    time (lionel richie album) time   lionel richie album) time 
+## 3  74506 Q493981    time                       time   &lt;NA&gt;                 time 
+## 4 323363 Q617572    time (yugoslavian band)    time   yugoslavian band)    time 
+## 5 323363 Q617572    time (rock band)           time   rock band)           time 
+## 6 323363 Q617572    time (yugoslav band)       time   yugoslav band)       time</code></pre>
+<p>We also have the descriptions of those entities from wikipedia. We can use the pretrained embeddings to disambiguate among those, which we’ll use as a quick and dirty way to disambiguate.</p>
+<pre class="r"><code>library(readr)
+wikidata5m_text &lt;- read_delim(&quot;/run/media/knut/HD/knut/Desktop/MLearningAlgoTests/data/wikidata5m_text.csv&quot;, 
+    delim = &quot;\t&quot;, escape_double = FALSE, 
+    trim_ws = TRUE, col_names = FALSE) %&gt;% rename(wikientity=X1, description=X2) %&gt;% filter.(wikientity%in%unique(entity_overlap$wikientity))</code></pre>
+<pre><code>## Warning: One or more parsing issues, call `problems()` on your data frame for details,
+## e.g.:
+##   dat &lt;- vroom(...)
+##   problems(dat)</code></pre>
+<pre><code>## Rows: 4403676 Columns: 2
+## ── Column specification ────────────────────────────────────────────────────────
+## Delimiter: &quot;\t&quot;
+## chr (2): X1, X2
+## 
+## ℹ Use `spec()` to retrieve the full column specification for this data.
+## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+<pre class="r"><code>wikidata5m_text %&gt;% head()</code></pre>
+<pre><code>## # A tidytable: 6 × 2
+##   wikientity description                                                        
+##   &lt;chr&gt;      &lt;chr&gt;                                                              
+## 1 Q5596987   &quot;Grape-Nuts is a breakfast cereal developed in 1897 by C. W. Post,…
+## 2 Q3764405   &quot;&#39;Kadapa Lok Sabha constituency is one of the twenty-five lok sabh…
+## 3 Q3991654   &quot;TinyPic is a photo and video sharing service, owned and operated …
+## 4 Q3990637   &quot;Thomas Hedley Jr., (born 1942/43) is a British magazine editor an…
+## 5 Q4929227   &quot;Blue Hill Avenue is a regional rail station on the MBTA Commuter …
+## 6 Q2291075   &quot;Arabi (Arabic: أرابي) is a town in Crisp County, Georgia, United …</code></pre>
+<p>Let’s test disambiguation via the fasttext model document embeddings:</p>
+<pre class="r"><code>test_entities &lt;- entity_overlap %&gt;% filter.(words==&quot;communication&quot;)
+
+entity_candidate_descr_embs &lt;- get_sentence_representation(model, wikidata5m_text %&gt;% filter.(wikientity%in%test_entities$wikientity) %&gt;% pull(description))
+entity_candidate_descr_embs &lt;- entity_candidate_descr_embs %&gt;% as.VectorSpaceModel()
+rownames(entity_candidate_descr_embs) &lt;- wikidata5m_text %&gt;% filter.(wikientity%in%test_entities$wikientity) %&gt;% distinct(wikientity) %&gt;% pull(wikientity)
+
+
+
+overlapping_words &lt;- unique(entity_overlap$words)
+fasttext_emb_test &lt;- fastrtext::get_word_vectors(model, words = &quot;communication&quot;)
+fasttext_emb_test &lt;- fasttext_emb_test %&gt;% as.VectorSpaceModel()
+rownames(fasttext_emb_test) &lt;- &quot;communication&quot;
+
+wordVectors::closest_to(entity_candidate_descr_embs, fasttext_emb_test) %&gt;% rename(wikientity=word) %&gt;% inner_join.(entity_overlap %&gt;% distinct(wikientity, words)) %&gt;% arrange(desc(`similarity to fasttext_emb_test`))</code></pre>
+<pre><code>## # A tidytable: 14 × 3
+##    wikientity `similarity to fasttext_emb_test` words           
+##    &lt;chr&gt;                                  &lt;dbl&gt; &lt;chr&gt;           
+##  1 Q11024                                 0.429 communication   
+##  2 Q11024                                 0.429 communicate     
+##  3 Q11024                                 0.429 communicating   
+##  4 Q11024                                 0.429 miscommunication
+##  5 Q11024                                 0.429 comunication    
+##  6 Q18148644                              0.394 communication   
+##  7 Q5154077                               0.341 communication   
+##  8 Q1121530                               0.335 communication   
+##  9 Q5154076                               0.260 communication   
+## 10 Q5154087                               0.253 communication   
+## 11 Q5154086                               0.251 communication   
+## 12 Q333886                                0.248 communication   
+## 13 Q7733071                               0.219 communication   
+## 14 Q21161211                              0.200 communication</code></pre>
+<p>The description of the most similar concept is:</p>
+<pre class="r"><code>wikidata5m_text %&gt;% filter.(wikientity==&quot;Q11024&quot;) %&gt;% pull(description)</code></pre>
+<pre><code>## [1] &quot;Communication (from Latin communicare, meaning \&quot;to share\&quot;) is the act of conveying meanings from one entity or group to another through the use of mutually understood signs, symbols,  and semiotic rules.The main steps inherent to all communication are:The formation of communicative motivation or reason.Message composition (further internal or technical elaboration on what exactly to express).Message encoding (for example, into digital data, written text, speech, pictures, gestures and so on).Transmission of the encoded message as a sequence of signals using a specific channel or medium.Noise sources such as natural forces and in some cases human activity (both intentional and accidental) begin influencing the quality of signals propagating from the sender to one or more receivers.Reception of signals and reassembling of the encoded message from a sequence of received signals.Decoding of the reassembled encoded message.Interpretation and making sense of the presumed original message.The scientific study of communication can be divided into:Information theory which studies the quantification, storage, and communication of information in general;Communication studies which concerns human communication;Biosemiotics which examines communication in and between living organisms in general.The channel of communication can be visual, auditory, tactile (such as in Braille) and haptic, olfactory, electromagnetic, or biochemical.Human communication is unique for its extensive use of abstract language. Development of civilization has been closely linked with progress in telecommunication.&quot;</code></pre>
+<p>In this instance, this simple approach worked. Let’s proceed with it.</p>
+<pre class="r"><code># overlapping_words &lt;- unique(entity_overlap$words)
+# 
+# 
+# rm(polar_embeddings, entities)
+# gc()
+# 
+# pacman::p_load(tidytable, data.table, tidyverse, arrow, ggcharts, wordVectors, pbmcapply, fastrtext)
+# 
+# fastSave::load.lbzip2(&quot;/home/knut/Desktop/image.RDataFS&quot;, n.cores = 15)
+# 
+# disambiguate &lt;- function(X){
+#   word &lt;- X
+#   model &lt;- fastrtext::load_model(&quot;/home/knut/nlpaug/embs/cc.en.300.ftz&quot;)
+#     test_entities &lt;- entity_overlap %&gt;% filter.(words==word)
+# 
+#   entity_candidate_descr_embs &lt;- fastrtext::get_sentence_representation(model, wikidata5m_text %&gt;% filter.(wikientity%in%test_entities$wikientity) %&gt;% pull(description))
+#   entity_candidate_descr_embs &lt;- entity_candidate_descr_embs %&gt;% as.VectorSpaceModel()
+#   rownames(entity_candidate_descr_embs) &lt;- wikidata5m_text %&gt;% filter.(wikientity%in%test_entities$wikientity) %&gt;% distinct(wikientity) %&gt;% pull(wikientity)
+#   
+#   
+#   
+# 
+#   fasttext_emb_test &lt;- fastrtext::get_word_vectors(model, words = word)
+#   fasttext_emb_test &lt;- fasttext_emb_test %&gt;% as.VectorSpaceModel()
+#   rownames(fasttext_emb_test) &lt;- word
+#   
+#   look_up &lt;- function(){
+#     ent &lt;- wordVectors::closest_to(entity_candidate_descr_embs, fasttext_emb_test) %&gt;% rename(wikientity=word) %&gt;% inner_join.(entity_overlap %&gt;% distinct(wikientity, words)) %&gt;% arrange(desc(`similarity to fasttext_emb_test`)) %&gt;% as.data.frame() %&gt;% pull(wikientity)
+#     ent[1]}
+#   safe_lookup &lt;- possibly(look_up, NA)
+#   
+#   
+#   disambiguated_entity &lt;- safe_lookup()
+#   rm(model, fasttext_emb_test, entity_candidate_descr_embs, test_entities)
+#   gc()
+#   disambiguated_entity &lt;- data.table(disambiguated_entity=disambiguated_entity, words=word)
+#   disambiguated_entity
+# 
+# }
+# 
+# #options(future.fork.enable = TRUE)
+# 
+# #library(furrr)
+# 
+# #plan(multicore, workers=12)
+# 
+# #results &lt;- future_map_dfr(.x = overlapping_words, .f = disambiguate, .progress = T)
+# 
+# results &lt;- pbmcapply::pbmcmapply(X = overlapping_words, FUN = disambiguate, mc.cores = 15L) # works cleaner with forking
+# 
+# results2 &lt;- results %&gt;% t() %&gt;% as.data.frame()
+
+results2 &lt;- fread(&quot;/run/media/knut/HD/knut/Desktop/MLearningAlgoTests/data/polar/polar_quantized_fasttext_entities.csv&quot;)</code></pre>
+<p>This should be almost it. Only gotta grab the knowledge graph embedddings.</p>
+<pre class="r"><code>results2 &lt;- results2 %&gt;% rename(wikientity=disambiguated_entity) %&gt;% inner_join.(entities %&gt;% distinct.(wikientity, rowid)) %&gt;% inner_join.(polar_embeddings, by=c(&quot;rowid&quot;=&quot;rowid&quot;))</code></pre>
+<p>You can find the embeddings (130k records) on Huggingface:</p>
+<p><a href="https://huggingface.co/datasets/KnutJaegersberg/interpretable_word_embeddings" class="uri">https://huggingface.co/datasets/KnutJaegersberg/interpretable_word_embeddings</a></p>
+</div>
+</div>
